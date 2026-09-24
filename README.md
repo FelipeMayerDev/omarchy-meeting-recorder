@@ -1,98 +1,148 @@
 # Omarchy Meeting Recorder
 
-**Record a meeting on [Omarchy](https://omarchy.org), your microphone and the computer audio as two tracks, and get a transcript with speakers, chapters and a player when you stop. The transcription runs on your own machine.**
+A meeting recorder for [Omarchy](https://omarchy.org). It records your microphone and the computer audio as two tracks, and when you stop you get a transcript with speakers, chapters and a player. You can also drop in a recording you already have. Everything is transcribed on your own machine.
 
-![The done screen: chapters on the left, the transcript on the right, a waveform player above it](screenshots/hero.png)
+No bot joins your call, and no audio leaves your computer. It works with any meeting app, because it simply listens to what your computer plays and what you say.
 
-Open the app and it records. Stop, and it transcribes the meeting with [whisper.cpp](https://github.com/ggml-org/whisper.cpp) while a 90s animation keeps you company. When it is done you get the transcript with who said what, a player to listen back from any line, and chapters written by the coding agent you already use.
+![The done screen in Tokyo Night: chapters on the left, the transcript on the right, a waveform player above it](screenshots/hero.webp)
 
-<p align="center"><img src="screenshots/transcribing.webp" alt="The transcribing animation: a neon sun over a scrolling grid, the progress bar and the lines as they are recognised" width="720"></p>
+Open the app, check that both meters move, and press **Start recording**. When you stop, [whisper.cpp](https://github.com/ggml-org/whisper.cpp) transcribes the meeting while a 90s animation keeps you company. You get the transcript with who said what, a player to listen back from any line, and chapters written by the coding agent you already use. Everything takes the colours of your Omarchy theme.
 
-[Watch the whole flow in 30 seconds (MP4)](screenshots/flow.mp4) · [State by state, close up (MP4)](screenshots/transitions.mp4) · [The transcribing animation (MP4)](screenshots/transcribing-loop.mp4)
+Built for Omarchy on Hyprland (GTK 4 and libadwaita, written in Rust). [Install it](#install) in a few commands.
+
+<p align="center"><img src="screenshots/transcribing-animation.webp" alt="The transcribing animation: a neon sun over a scrolling grid, the progress bar and the lines as they are recognised, with the speakers' names" width="420"></p>
 
 ## What it does
 
+### Checks the sound before you start
+
+The app opens ready, not recording. The two meters are live from the start, a still line that thickens as sound comes in, so you can see that both your microphone and the computer audio arrive before the meeting begins. Type a name if you like (otherwise it becomes "Meeting 14:30"), pick the audio format and the transcript language, and press **Start recording**.
+
+<p align="center"><img src="screenshots/ready.webp" alt="The ready page: meeting name, audio file, language, two meters that say Not recording, the Start recording button and Import an audio file, or drop one here" width="440"></p>
+
 ### Records both sides of the call
 
-Opening the app starts recording right away. Your microphone and whatever your computer plays are captured as two separate tracks, and two live meters show that both actually carry sound. The meeting name, the audio format and the transcript language can all still be changed during the call.
+Your microphone and whatever your computer plays are recorded as two separate tracks. The name, the audio format and the language can all still be changed during the call.
 
-<p align="center"><img src="screenshots/recording.png" alt="The recording window with live meters for the microphone and the computer audio" width="560"></p>
+<p align="center"><img src="screenshots/recording.webp" alt="Recording: both meters moving, the clock, Pause and Stop recording" width="440">&nbsp;&nbsp;<img src="screenshots/paused.webp" alt="Paused: both waves frozen and dimmed with a PAUSED sign, Resume and Stop recording" width="440"></p>
+
+**Pause** freezes both waves under a "❚❚ PAUSED" sign and stops the clock; nothing is written to either track until you press **Resume**.
 
 ### Stays out of the way
 
-Press Ctrl+M, or the button in the header bar, and the window shrinks to a strip with only the two waves and the clock. Click it, or press Ctrl+M again, for the full window.
+Press Ctrl+M, or the button in the header bar, and the window shrinks to a strip with only the clock and the two waves. Drag the strip anywhere; the small button on its right, or Ctrl+M again, brings the full window back.
 
-<p align="center"><img src="screenshots/compact.png" alt="The compact strip: a red dot, the elapsed time and two small waves" width="600"></p>
+<p align="center"><img src="screenshots/compact.webp" alt="The compact strip: a red dot, the elapsed time, two small waves and an expand button" width="420"></p>
 
-The bar widget shows the same while you record: a pulsing dot, a small waveform with the mic above the line and the computer audio below it, and the time. While the meeting is being transcribed it shows the progress instead. Clicking it brings the recorder window back.
+The bar widget shows the same while you record: a pulsing dot, a small waveform with the mic above the line and the computer audio below it, and the time. Paused it says "paused 01:23", and while the meeting is transcribed it shows the progress. Clicking it brings the recorder window back.
 
-<p align="center"><img src="screenshots/bar-widget.png" alt="The bar widget: a red dot, a live waveform and 01:05" width="560"></p>
+<p align="center"><img src="screenshots/bar-widget.webp" alt="The bar widget recording, paused and transcribing" width="600"></p>
 
 ### Transcribes on your own machine
 
-When you stop, the window switches straight to the transcribing animation: first it saves the audio, then [whisper-rs](https://github.com/tazz4843/whisper-rs) transcribes the meeting with the `large-v3-turbo` model, and the lines type themselves out as they are recognised. Nothing is sent anywhere. The language is locked while this runs.
+When you stop, the window switches straight to the transcribing animation: it saves the audio, then [whisper-rs](https://github.com/tazz4843/whisper-rs) transcribes the meeting, and the lines type themselves out with the speakers' names as they are recognised. It ends on 100% and DONE, and stays at least ten seconds, also for a short recording. Nothing is sent anywhere.
 
-<p align="center"><img src="screenshots/transcribing.png" alt="The transcribing animation at 70 percent" width="560"></p>
+<p align="center"><img src="screenshots/transcribing.webp" alt="The transcribing animation at 77 percent with lines from Maya and Tom" width="440"></p>
+
+### Imports any recording
+
+Drop an audio file on the window, or click **Import an audio file**: a phone memo, a call you recorded elsewhere, anything ffmpeg can read. Pick the language and how many people speak, or leave Speakers on Automatic, and the file is transcribed the same way. Since one file has no second track, the voices themselves are told apart, and each speaker gets a colour from your theme.
+
+<p align="center"><img src="screenshots/drop-overlay.webp" alt="Dragging an mp3 from Nautilus onto the window: a dashed border and Drop to import" width="360">&nbsp;&nbsp;<img src="screenshots/import-dialog.webp" alt="The Import audio dialog with Language and Speakers set to Automatic" width="360"></p>
+
+![An imported design review: three speakers, each in their own colour](screenshots/import-speakers.webp)
 
 ### Gives you a transcript you can listen to
 
-The done screen puts the transcript on the right: the time, the speaker and the text in their own columns, grouped into one paragraph per turn. Above it sits a player with a waveform of both sides, your side above the line and the other side below it. Click or drag in the waveform to seek, or click any line to play from there. The line that is playing is highlighted and the transcript scrolls along.
+The done screen puts the transcript on the right: the time, the speaker and the text in their own columns, one paragraph per turn. Above it sits a player with a waveform of both sides, your side above the line and the other side below it. Click or drag in the waveform to seek, or click any line to play from there. The line that is playing is highlighted and the transcript scrolls along.
 
-On the left: the meeting name and the names of both speakers, which you can change at any time (the folder, the transcript and the manifest follow, and your own name is remembered for next time), the chapters, **Copy transcript** (also Enter), Open folder, New recording, and the language to transcribe again in.
+On the left: the meeting name and one row per speaker, which you can rename at any time (the folder, the transcript and the manifest follow, and your own name is remembered for next time), the chapters, **Copy transcript** (also Enter), Open folder, New recording, and the language to transcribe again in.
 
-![The done screen: the chapters, the transcript with chapter headings, and the waveform with chapter markers](screenshots/done.png)
+![The done screen while playing: the current chapter selected and the current line highlighted](screenshots/done.webp)
 
-<p align="center"><img src="screenshots/detail-player.png" alt="Close-up of the player: the two waves, chapter markers and the playhead" width="720"></p>
+### Lets you fix it where you read it
 
-It follows your theme, light ones included:
+Hover a line and three buttons appear: edit the text in place, give the line to the next speaker, or delete it. A deleted line comes back with Undo.
 
-![The done screen on Catppuccin Latte](screenshots/done-light.png)
+![Hovering a line: edit, next speaker and delete](screenshots/row-actions.webp)
+
+![Editing a line in place](screenshots/inline-edit.webp)
 
 ### Chapters by your default agent
 
 When Omarchy has a default coding agent set (`omarchy default agent`, for instance Claude Code or Codex) and the meeting is three minutes or longer, the agent divides the transcript into chapters once it is done. They show up as a list on the left, as headings in the transcript and as markers on the waveform (hover for the title), and `transcript.md` gets a `## Chapters` list at the top, so a copied transcript carries them too. The Chapters header on the done page makes them again.
 
-<p align="center"><img src="screenshots/detail-chapters.png" alt="Close-up of the chapters list with the current chapter selected" width="640"></p>
+<p align="center"><img src="screenshots/chapters.webp" alt="Close-up of the chapters list with the current chapter selected" width="600"></p>
 
 Chapters are an extra, not a requirement: without an agent the button is simply not there and everything else works the same. The agent runs without any tools. It gets the transcript and the instructions, and can only answer with text.
+
+### Wears your Omarchy theme
+
+The app reads the palette of the current theme (`colors.toml`): the background, the accent, and the theme's own colours for the speakers, the waves and the animation. Switch themes while it is open and it follows.
+
+![The done screen in Tokyo Night, Osaka Jade, Catppuccin Latte, Gruvbox, Kanagawa and Everforest](screenshots/themes.webp)
+
+![The done screen on Catppuccin Latte](screenshots/done-light.webp)
+
+### Keeps your recording safe
+
+If the app quits while it records (a crash, a logout, a power cut), the next start finds the unfinished recording and offers to save it as a meeting, keep it for later, or discard it.
+
+<p align="center"><img src="screenshots/recovery.webp" alt="Unfinished recording found, with Save, Later and Discard" width="440"></p>
+
+## Handy to know
+
+- **Keyboard.** Ctrl+M switches between the full window and the compact strip. On the done page Enter copies the transcript. Ctrl+W and Ctrl+Q close, and ask first while recording or transcribing.
+- **The name** stays editable all the time. After the transcript is done, changing it (Enter, or leaving the field) renames the meeting folder and the heading in the transcript.
+- **Closing** while recording or transcribing asks first. You can stop and close, let the transcription finish in the background and quit afterwards, or cancel the transcription; the audio is kept either way.
+- **Opening a meeting later.** Double-click its `.meeting-recorder` file, or run `omarchy-meeting-recorder <folder>`. It opens on the done page with the settings it was made with.
+- **Keybindings.** `omarchy-meeting-recorder start`, `pause`, `stop` and `compact` control the running app, so you can bind them to keys in Hyprland.
 
 ## What it writes to disk
 
 Every meeting is a plain folder in `~/Documents/Meetings`, named `<YYYYMMDDHHMM> <name>`, so they sort by date:
 
-![Nautilus showing three meeting folders](screenshots/files-meetings.png)
+![Nautilus showing four meeting folders](screenshots/files-meetings.webp)
 
-Inside, the audio in the format you picked, the transcript, and a `.meeting-recorder` file that opens the meeting in the app when you double-click it:
+Inside, the audio in the format you picked, the transcript, a `.meeting-recorder` file that opens the meeting in the app when you double-click it, and (hidden) `.tracks`, the two separate tracks the app keeps so it can transcribe the meeting again:
 
-![The inside of a meeting folder: audio.ogg, Launch sync.meeting-recorder and transcript.md](screenshots/files-meeting-folder.png)
+![The inside of a meeting folder with hidden files shown: audio.ogg, Launch sync.meeting-recorder, transcript.md and .tracks](screenshots/files-meeting-folder.webp)
 
-With hidden files shown you also see `.tracks`, the two separate tracks the app keeps so it can transcribe the meeting again:
-
-![The same folder with hidden files shown, including .tracks](screenshots/files-hidden-tracks.png)
-
-- `<name>.meeting-recorder`, a small JSON file with the title, start time, duration, audio format, language, speaker names and chapters. It has its own MIME type (`application/x-omarchy-meeting`), so double-clicking it opens the meeting in the app on the done page, with the settings the meeting was made with. The folder itself stays a plain folder.
+- `<name>.meeting-recorder`, a small JSON file with the title, start time, duration, audio format, language, speaker names, the model that transcribed it and the chapters. It has its own MIME type (`application/x-omarchy-meeting`), so double-clicking it opens the meeting in the app on the done page, with the settings the meeting was made with. The folder itself stays a plain folder.
 - `transcript.md`, with the speaker and a timestamp on every line (and the chapters, when there are any)
 - the audio in the format you picked:
   - **Mono**: `audio.ogg`, mic and computer audio mixed
   - **Stereo**: `audio.ogg`, mic on the left channel, computer audio on the right
   - **Separate files**: `mic.ogg` and `computer.ogg`
 - `.tracks/mic.ogg` and `.tracks/computer.ogg`, a hidden copy of both tracks in mono. This is what Transcribe again uses, so the speakers stay apart whatever audio format you chose. Delete the directory if you do not need that.
+- For an imported file: `audio.ogg`, the transcript and the `.meeting-recorder` file; the original file is left where it was.
 
 Both tracks are always recorded separately, and each is levelled to the same speech loudness when it is saved, so a quiet microphone and a loud call end up equally easy to hear. The format can be switched until the moment you press stop.
 
 ## How it works
 
 - **Recording.** The mic (`@DEFAULT_SOURCE@`) and the monitor of the default output (`@DEFAULT_MONITOR@`) are captured with `parec`. Because it follows the default output, switching to a headset during a call keeps working. `ffmpeg` encodes the audio to Opus when you stop.
-- **Transcription.** After the call both tracks are mixed and transcribed in one pass with whisper-rs, using the `large-v3-turbo` model, so there is a single timeline. Long silences are skipped, which keeps whisper from inventing text in them, and word times come from whisper's attention alignment (DTW).
+- **Transcription.** After the call both tracks are mixed and transcribed in one pass with whisper-rs, using the `large-v3-turbo` model unless you pick another, so there is a single timeline. Long silences are skipped, which keeps whisper from inventing text in them, and word times come from whisper's attention alignment (DTW).
 - **Who said what.** The speaker of each line is read off the two tracks, like whisper.cpp's `--diarize`: where the mic is louder it is you, where the computer audio is louder it is the other side. Echo of the other side in your mic, when you use speakers instead of a headset, is always quieter than the original, so it does not become a line of its own. When both people talk at the same time whisper follows the louder voice and the quieter one can get lost.
 - **Imported files.** A single audio file has no second track to tell the speakers apart, so the voices themselves are told apart with sherpa-onnx's offline speaker diarization, run locally: pyannote's segmentation model finds stretches of one voice, a WeSpeaker ResNet34 model turns each stretch into a voice print, and the prints are clustered into "Speaker 1", "Speaker 2" and so on, in the order they first speak. The number of speakers is found automatically (voices heard for only a few seconds are folded into the nearest real speaker) or can be fixed. A sentence always goes to one speaker as a whole. It works best with a few people with clearly different voices; similar voices and fast back-and-forth can land on the wrong speaker, which the swap-speaker button fixes per line.
 - **Chapters.** The recorder runs `omarchy-default-agent`'s agent headless and with every tool switched off, in an empty working directory, bounded in time and size. Agents that cannot run without tools are not used.
 - **Playback.** `ffmpeg` decodes into `pacat`, so playing a meeting back needs nothing beyond what recording already uses.
+- **Crash recovery.** While recording, both tracks are written to a cache directory as they come in. A recording that was not stopped properly is still there on the next start.
 - **The bar widget.** The app serves its live state on a Unix socket in `$XDG_RUNTIME_DIR`. `omarchy-meeting-recorder watch` relays it as NDJSON, which is what the widget reads.
 
 ### The model
 
-The app looks for `ggml-large-v3-turbo.bin` in `~/.local/share/omarchy-meeting-recorder/models/`. If you use [voxtype](https://voxtype.io) and it already downloaded that model to `~/.local/share/voxtype/models/`, that copy is used. Otherwise the first transcription downloads it (about 1.6 GB) from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp). Importing a file downloads two small speaker models on first use (about 32 MB together) to the same directory: `pyannote-segmentation-3.0.onnx` and `wespeaker_en_voxceleb_resnet34_LM.onnx`. sherpa-onnx is compiled into the binary, so nothing else is needed at runtime.
+The default is whisper's `large-v3-turbo`. To use another, set it in `~/.config/omarchy-meeting-recorder/config.toml`:
+
+```toml
+model = "small"   # tiny, tiny.en, base, base.en, small, small.en, medium, medium.en, large-v3, large-v3-turbo, or a path to a .bin file
+```
+
+The command-line `transcribe` and `transcribe-file` take `--model` instead. When the configured model is not on disk yet, the start screen says so, with its size, and a Download button:
+
+<p align="center"><img src="screenshots/model-banner.webp" alt="The banner: The speech model (tiny, 75 MB) is needed to transcribe, with Download" width="600"></p>
+
+The app looks for `ggml-<model>.bin`, for instance `ggml-large-v3-turbo.bin`, in `~/.local/share/omarchy-meeting-recorder/models/`. If you use [voxtype](https://voxtype.io) and it already downloaded that model to `~/.local/share/voxtype/models/`, that copy is used. Otherwise it is downloaded (about 1.6 GB for `large-v3-turbo`) from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp). Importing a file downloads two small speaker models on first use (about 32 MB together) to the same directory: `pyannote-segmentation-3.0.onnx` and `wespeaker_en_voxceleb_resnet34_LM.onnx`. sherpa-onnx is compiled into the binary, so nothing else is needed at runtime.
 
 ## Privacy
 
@@ -149,30 +199,29 @@ omarchy bar move jankeesvw.meeting-recorder --section right
 
 | Command | What it does |
 |---|---|
-| `omarchy-meeting-recorder` | Open the recorder and start recording right away |
+| `omarchy-meeting-recorder` | Open the recorder, ready to record |
 | `omarchy-meeting-recorder <folder or .meeting-recorder file>` | Open a saved meeting on the done page |
-| `omarchy-meeting-recorder stop` | Stop the running recording, for a keybinding |
+| `omarchy-meeting-recorder start` | Start recording in the open window, for a keybinding |
+| `omarchy-meeting-recorder pause` | Pause or resume the running recording |
+| `omarchy-meeting-recorder stop` | Stop the running recording |
 | `omarchy-meeting-recorder compact` | Switch the recording window between full and compact |
 | `omarchy-meeting-recorder watch` | Stream the recorder state as NDJSON, for the bar widget |
-| `omarchy-meeting-recorder transcribe <mic> <computer> [--language xx]` | Transcribe two tracks and print the transcript as Markdown |
+| `omarchy-meeting-recorder transcribe <mic> <computer> [--language xx] [--model name]` | Transcribe two tracks and print the transcript as Markdown |
+| `omarchy-meeting-recorder transcribe-file <audio> [--speakers N] [--language xx] [--model name]` | Transcribe one file, telling the voices apart, and print the transcript as Markdown |
 | `omarchy-meeting-recorder ask "<prompt>" < text` | Run a prompt over stdin through the default agent, without tools (`ask --agent` shows which agent that is) |
 
 For example:
 
 ```bash
 omarchy-meeting-recorder transcribe mic.ogg computer.ogg --language en > transcript.md
+omarchy-meeting-recorder transcribe-file interview.mp3 --speakers 2 > transcript.md
 ```
 
 Any format ffmpeg can read works. `--language` takes `auto` (the default), `en`, `nl`, `de`, `fr`, `es`, `it` or `pt`.
 
-### Using it
-
-- **The name** stays editable all the time. After the transcript is done, changing it (Enter, or leaving the field) renames the meeting folder and the heading in the transcript.
-- **Closing** while recording or transcribing asks first. You can stop and close, let the transcription finish in the background and quit afterwards, or cancel the transcription; the audio is kept either way. Ctrl+W and Ctrl+Q ask the same question.
-
 ## The screenshots
 
-The meeting in the screenshots and clips is invented and was voiced with [piper](https://github.com/rhasspy/piper). `demo/` has the script and the steps to shoot them again.
+The meetings in the screenshots and clips are invented and were voiced with [piper](https://github.com/rhasspy/piper). `demo/` has the scripts and a step-by-step guide to shoot them again.
 
 ## License
 

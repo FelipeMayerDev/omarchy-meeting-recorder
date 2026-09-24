@@ -29,6 +29,16 @@ def field(w, h):
     return small.resize((w, h), Image.BICUBIC)
 
 
+def wordmark(height, color):
+    """The Omarchy wordmark from /usr/share/omarchy/logo.svg in one colour."""
+    import subprocess
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        subprocess.run(["magick", "-background", "none", "/usr/share/omarchy/logo.svg", "-resize",
+                        f"x{height}", "-fill", color, "-colorize", "100", tmp.name], check=True)
+        return Image.open(tmp.name).convert("RGBA")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("capture")
@@ -42,6 +52,10 @@ def main():
     ap.add_argument("--size", default="1600x900")
     ap.add_argument("--radius", type=int, default=24)
     ap.add_argument("--scale", type=float, default=1.0)
+    ap.add_argument("--bg", help="an image to use as the field instead of the dark gradient")
+    ap.add_argument("--logo", action="store_true", help="add the Omarchy wordmark bottom right")
+    ap.add_argument("--caption-color", default="white")
+    ap.add_argument("--subtitle-color", default="#8B8B9E")
     a = ap.parse_args()
 
     W, H = (int(v) for v in a.size.split("x"))
@@ -55,7 +69,10 @@ def main():
     mask = Image.new("L", card.size, 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, card.width - 1, card.height - 1), r, fill=255)
 
-    canvas = field(W, H).convert("RGBA")
+    if a.bg:
+        canvas = Image.open(a.bg).convert("RGBA").resize((W, H), Image.LANCZOS)
+    else:
+        canvas = field(W, H).convert("RGBA")
     cx = (W - card.width) // 2
     cy = 60 + (box_h - card.height) // 2
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -69,11 +86,14 @@ def main():
         title = ImageFont.truetype(BOLD, 44)
         tw = draw.textlength(a.caption, font=title)
         ty = cy + card.height + 48
-        draw.text(((W - tw) / 2, ty), a.caption, font=title, fill="white")
+        draw.text(((W - tw) / 2, ty), a.caption, font=title, fill=a.caption_color)
         if a.subtitle:
             sub = ImageFont.truetype(REGULAR, 25)
             sw = draw.textlength(a.subtitle, font=sub)
-            draw.text(((W - sw) / 2, ty + 62), a.subtitle, font=sub, fill="#8B8B9E")
+            draw.text(((W - sw) / 2, ty + 62), a.subtitle, font=sub, fill=a.subtitle_color)
+    if a.logo:
+        logo = wordmark(34, a.subtitle_color)
+        canvas.alpha_composite(logo, (W - logo.width - 48, H - logo.height - 40))
     canvas.convert("RGB").save(a.out, optimize=True)
 
 

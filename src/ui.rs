@@ -2587,7 +2587,9 @@ impl Recorder {
         };
         let title = self.title();
         let target = output_dir(self.started_at.get(), &title);
-        let renamed = target != current;
+        // "202609241400 Weekly 2" is still the folder of "Weekly": an import
+        // got a number when the name was taken. Only a new name renames.
+        let renamed = !folder_is_for(&current, &target);
         if renamed {
             if target.exists() {
                 self.toast("A meeting folder with that name already exists");
@@ -2600,6 +2602,8 @@ impl Recorder {
             *self.result_dir.borrow_mut() = Some(target.clone());
             self.render();
         }
+        // The folder the meeting is in now: renamed, or the numbered one it had.
+        let target = if renamed { target } else { current };
         let mut retitled = false;
         if let Some(manifest) = self.manifest.borrow_mut().as_mut()
             && manifest.title != title
@@ -2672,6 +2676,23 @@ impl Recorder {
         });
         dialog.present(Some(&self.window));
     }
+}
+
+/// Whether `folder` is `expected`, or `expected` with a number after it.
+fn folder_is_for(folder: &std::path::Path, expected: &std::path::Path) -> bool {
+    let (Some(name), Some(want)) = (
+        folder.file_name().and_then(|n| n.to_str()),
+        expected.file_name().and_then(|n| n.to_str()),
+    ) else {
+        return folder == expected;
+    };
+    folder.parent() == expected.parent()
+        && name.strip_prefix(want).is_some_and(|rest| {
+            rest.is_empty()
+                || rest
+                    .strip_prefix(' ')
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        })
 }
 
 fn output_dir(started_at: i64, title: &str) -> PathBuf {
@@ -2788,36 +2809,79 @@ fn hyprland_resize((width, height): (i32, i32)) {
     let pid = std::process::id();
     std::thread::spawn(move || {
         // Right after start the window may not be mapped yet; wait for it a little.
-        let mut address = None;
+        let mut window = None;
         for _ in 0..30 {
-            address = std::process::Command::new("hyprctl")
-                .args(["clients", "-j"])
-                .output()
-                .ok()
-                .and_then(|out| serde_json::from_slice::<serde_json::Value>(&out.stdout).ok())
-                .and_then(|clients| {
-                    clients.as_array().and_then(|list| {
-                        list.iter()
-                            .find(|c| {
-                                c["pid"].as_u64() == Some(u64::from(pid)) && c["floating"] == true
-                            })
-                            .and_then(|c| c["address"].as_str().map(str::to_owned))
-                    })
-                });
-            if address.is_some() {
+            window = own_window(pid);
+            if window.is_some() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        if let Some(address) = address {
-            let _ = std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg(format!(
-                    "hl.dsp.window.resize({{ x = {width}, y = {height}, window = \"address:{address}\" }})"
-                ))
-                .output();
+        let Some(window) = window else { return };
+        let Some(address) = window["address"].as_str().map(str::to_owned) else {
+            return;
+        };
+        hyprctl_dispatch(&format!(
+            "hl.dsp.window.resize({{ x = {width}, y = {height}, window = \"address:{address}\" }})"
+        ));
+        // Hyprland grows a floating window around its centre; a strip that was
+        // dragged into a corner would then stick out. Bring it back on screen.
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        if let Some((x, y)) = own_window(pid).and_then(|w| on_screen(&w)) {
+            hyprctl_dispatch(&format!(
+                "hl.dsp.window.move({{ x = {x}, y = {y}, window = \"address:{address}\" }})"
+            ));
         }
     });
+}
+
+fn hyprctl_json(what: &str) -> Option<serde_json::Value> {
+    let out = std::process::Command::new("hyprctl")
+        .args([what, "-j"])
+        .output()
+        .ok()?;
+    serde_json::from_slice(&out.stdout).ok()
+}
+
+fn hyprctl_dispatch(call: &str) {
+    let _ = std::process::Command::new("hyprctl")
+        .arg("dispatch")
+        .arg(call)
+        .output();
+}
+
+/// This process's floating window, as `hyprctl clients -j` describes it.
+fn own_window(pid: u32) -> Option<serde_json::Value> {
+    hyprctl_json("clients")?
+        .as_array()?
+        .iter()
+        .find(|c| c["pid"].as_u64() == Some(u64::from(pid)) && c["floating"] == true)
+        .cloned()
+}
+
+/// Where the window has to go to be fully visible on its monitor, outside the
+/// bar and with a small margin; None when it already is.
+fn on_screen(window: &serde_json::Value) -> Option<(i64, i64)> {
+    const MARGIN: i64 = 12;
+    let (x, y) = (window["at"][0].as_i64()?, window["at"][1].as_i64()?);
+    let (w, h) = (window["size"][0].as_i64()?, window["size"][1].as_i64()?);
+    let monitors = hyprctl_json("monitors")?;
+    let monitor = monitors
+        .as_array()?
+        .iter()
+        .find(|m| m["id"].as_i64() == window["monitor"].as_i64())?;
+    let scale = monitor["scale"].as_f64().unwrap_or(1.0).max(0.1);
+    let reserved = |i: usize| monitor["reserved"][i].as_i64().unwrap_or(0);
+    let left = monitor["x"].as_i64()? + reserved(0) + MARGIN;
+    let top = monitor["y"].as_i64()? + reserved(1) + MARGIN;
+    let right =
+        monitor["x"].as_i64()? + (monitor["width"].as_f64()? / scale) as i64 - reserved(2) - MARGIN;
+    let bottom = monitor["y"].as_i64()? + (monitor["height"].as_f64()? / scale) as i64
+        - reserved(3)
+        - MARGIN;
+    let nx = x.min(right - w).max(left);
+    let ny = y.min(bottom - h).max(top);
+    (nx != x || ny != y).then_some((nx, ny))
 }
 
 /// Repaints a widget and everything in it, for custom drawing after a theme switch.
