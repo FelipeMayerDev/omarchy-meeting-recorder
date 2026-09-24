@@ -5,6 +5,7 @@
 mod agent;
 mod animation;
 mod audio;
+mod bar_widget;
 mod chapters;
 mod diarize;
 mod export;

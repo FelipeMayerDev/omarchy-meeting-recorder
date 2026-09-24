@@ -2,12 +2,10 @@ post_install() {
   cat <<'MSG'
 Meeting Recorder is installed; open it from the launcher.
 
-Optional, per user:
+The first time you open it, it offers to put its widget in the bar
+(a live waveform while you record).
 
-  Bar widget (a live waveform in the bar while you record):
-    ln -s /usr/share/omarchy-meeting-recorder/plugin ~/.config/omarchy/plugins/jankeesvw.meeting-recorder
-    omarchy-shell shell rescanPlugins
-    omarchy plugin enable jankeesvw.meeting-recorder
+Optional, per user:
 
   A floating window, in ~/.config/hypr (Omarchy Quattro, Lua):
     o.window("^com\\.jankeesvw\\.OmarchyMeetingRecorder$", { float = true })

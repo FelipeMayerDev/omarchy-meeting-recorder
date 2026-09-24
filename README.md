@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/jankeesvw/omarchy-meeting-recorder/
 
 That builds a pacman package from the [PKGBUILD](packaging/aur/PKGBUILD) in this repository ([install.sh](install.sh) is ten lines, read it first if you like), so `sudo pacman -R omarchy-meeting-recorder-bin` removes it again. An AUR package follows as soon as the AUR takes new accounts again.
 
-Then open **Meeting Recorder** from the launcher. The first transcription downloads the whisper model (about 1.6 GB, once), and the app shows you how far along it is. The package prints how to add the Hyprland window rules and the bar widget; both are also explained [below](#build-from-source).
+Then open **Meeting Recorder** from the launcher. The first transcription downloads the whisper model (about 1.6 GB, once), and the app shows you how far along it is. It offers to put a live waveform in your bar the first time, and the package prints the Hyprland rules for a floating window (also [below](#build-from-source)).
 
 Prefer to build it yourself? See [Build from source](#build-from-source), or grab the binary from the [latest release](https://github.com/jankeesvw/omarchy-meeting-recorder/releases/latest).
 
@@ -198,7 +198,7 @@ o.window("^com\\.jankeesvw\\.OmarchyMeetingRecorder$", { center = true })
 
 ### Bar widget
 
-The `plugin` directory is an Omarchy Quattro bar widget. It stays hidden until a recording starts.
+The `plugin` directory is an Omarchy Quattro bar widget. It stays hidden until a recording starts. Installed as a package, the app offers to add it the first time you open it. From source, link it yourself:
 
 ```bash
 ln -s "$PWD/plugin" ~/.config/omarchy/plugins/jankeesvw.meeting-recorder
