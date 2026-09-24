@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "omarchy-meeting-recorder"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-channel",
  "gtk4",

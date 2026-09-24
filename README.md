@@ -8,7 +8,19 @@ No bot joins your call, and no audio leaves your computer. It works with any mee
 
 Open the app, check that both meters move, and press **Start recording**. When you stop, [whisper.cpp](https://github.com/ggml-org/whisper.cpp) transcribes the meeting while a 90s animation keeps you company. You get the transcript with who said what, a player to listen back from any line, and chapters written by the coding agent you already use. Everything takes the colours of your Omarchy theme.
 
-Built for Omarchy on Hyprland (GTK 4 and libadwaita, written in Rust). [Install it](#install) in a few commands.
+Built for Omarchy on Hyprland (GTK 4 and libadwaita, written in Rust).
+
+## Install
+
+Meeting Recorder is in the [AUR](https://aur.archlinux.org/packages/omarchy-meeting-recorder-bin), so on Omarchy it is one command:
+
+```bash
+yay -S omarchy-meeting-recorder-bin
+```
+
+Then open **Meeting Recorder** from the launcher. The first transcription downloads the whisper model (about 1.6 GB, once), and the app shows you how far along it is. The package prints how to add the Hyprland window rules and the bar widget; both are also explained [below](#build-from-source).
+
+Prefer to build it yourself? See [Build from source](#build-from-source), or grab the binary from the [latest release](https://github.com/jankeesvw/omarchy-meeting-recorder/releases/latest).
 
 <p align="center"><img src="screenshots/transcribing-animation.webp" alt="The transcribing animation: a neon sun over a scrolling grid, the progress bar and the lines as they are recognised, with the speakers' names" width="420"></p>
 
@@ -156,7 +168,7 @@ The audio, the transcript and everything else stay on your computer. The only th
 - Rust and CMake, to build it (whisper.cpp is compiled along)
 - Optional: a default agent in Omarchy for chapters
 
-## Install
+## Build from source
 
 ```bash
 cargo build --release
