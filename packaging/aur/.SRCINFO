@@ -22,7 +22,7 @@ pkgbase = omarchy-meeting-recorder-bin
 	provides = omarchy-meeting-recorder
 	conflicts = omarchy-meeting-recorder
 	options = !debug
-	source = https://github.com/jankeesvw/omarchy-meeting-recorder/releases/download/v1.0.2/omarchy-meeting-recorder-1.0.2-x86_64-linux.tar.gz
-	sha256sums = 78746ecc90366f12f308801637b98fc5e5b844bb28ba413e50ed3efe5c24079f
+	source_x86_64 = https://github.com/jankeesvw/omarchy-meeting-recorder/releases/download/v1.0.2/omarchy-meeting-recorder-1.0.2-x86_64-linux.tar.gz
+	sha256sums_x86_64 = 78746ecc90366f12f308801637b98fc5e5b844bb28ba413e50ed3efe5c24079f
 
 pkgname = omarchy-meeting-recorder-bin
