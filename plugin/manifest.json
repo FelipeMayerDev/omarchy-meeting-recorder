@@ -4,7 +4,7 @@
   "name": "Meeting Recorder",
   "version": "1.0.0",
   "author": "Jankees van Woezik",
-  "description": "Shows a live waveform of your mic and the computer audio while Omarchy Meeting Recorder is recording.",
+  "description": "Shows a live waveform of your mic and the computer audio while Meeting Recorder is recording.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "Widget.qml" },
   "barWidget": {

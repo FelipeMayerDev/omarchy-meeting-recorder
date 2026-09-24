@@ -1,4 +1,4 @@
-# Omarchy Meeting Recorder
+# Meeting Recorder
 
 A meeting recorder for [Omarchy](https://omarchy.org). It records your microphone and the computer audio as two tracks, and when you stop you get a transcript with speakers, chapters and a player. You can also drop in a recording you already have. Everything is transcribed on your own machine.
 

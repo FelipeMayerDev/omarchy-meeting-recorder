@@ -4,7 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Bar widget for Omarchy Meeting Recorder. While a meeting is being recorded it
+// Bar widget for Meeting Recorder. While a meeting is being recorded it
 // shows a pulsing dot, a live waveform (mic above the line, computer audio below
 // it, fainter) and the elapsed time. While the meeting is transcribed afterwards
 // it shows a steady dot and the progress. Hidden otherwise. Clicking it brings

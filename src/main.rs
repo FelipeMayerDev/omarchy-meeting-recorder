@@ -1,4 +1,4 @@
-//! Omarchy Meeting Recorder: records a meeting in two tracks (mic and computer
+//! Meeting Recorder: records a meeting in two tracks (mic and computer
 //! audio), transcribes it with whisper.cpp after the call, and streams live
 //! levels to a bar widget.
 

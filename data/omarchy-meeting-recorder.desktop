@@ -1,7 +1,6 @@
 [Desktop Entry]
 Version=1.0
-Name=Recorder
-GenericName=Meeting Recorder
+Name=Meeting Recorder
 Keywords=meeting;recorder;record;transcribe;transcript;audio;voice;whisper;
 Comment=Record a meeting in two tracks and transcribe it on this computer
 Exec=omarchy-meeting-recorder %f
