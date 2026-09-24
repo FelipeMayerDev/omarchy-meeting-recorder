@@ -1395,7 +1395,11 @@ mod tests {
     #[test]
     fn the_other_side_leaking_into_the_mic_is_dropped() {
         let out = interleave(vec![
-            line(0, "Remote 1", "The review is still pending after four days."),
+            line(
+                0,
+                "Remote 1",
+                "The review is still pending after four days.",
+            ),
             line(300, "You", "review is still pending after four"),
             line(9000, "Remote 1", "Sounds good."),
             line(9100, "You", "Sounds good."),

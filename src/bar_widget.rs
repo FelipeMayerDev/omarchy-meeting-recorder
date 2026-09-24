@@ -33,7 +33,7 @@ pub fn should_offer() -> bool {
         && glib::find_program_in_path("omarchy").is_some()
         && PathBuf::from(SOURCE).join("manifest.json").is_file()
         && (std::fs::symlink_metadata(target()).is_err()
-            || std::fs::read_link(target()).is_ok_and(|path| path == PathBuf::from(SOURCE)))
+            || std::fs::read_link(target()).is_ok_and(|path| path == std::path::Path::new(SOURCE)))
 }
 
 fn run(program: &str, args: &[&str]) -> Result<String, String> {
