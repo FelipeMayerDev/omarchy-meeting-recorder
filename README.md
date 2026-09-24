@@ -12,16 +12,11 @@ Built for Omarchy on Hyprland (GTK 4 and libadwaita, written in Rust).
 
 ## Install
 
-On Omarchy (or any Arch system) this builds a pacman package from the [PKGBUILD](packaging/aur/PKGBUILD) in this repository, which downloads the release binary:
-
 ```bash
-mkdir -p /tmp/meeting-recorder && cd /tmp/meeting-recorder
-curl -fsSLO https://raw.githubusercontent.com/jankeesvw/omarchy-meeting-recorder/main/packaging/aur/PKGBUILD
-curl -fsSLO https://raw.githubusercontent.com/jankeesvw/omarchy-meeting-recorder/main/packaging/aur/omarchy-meeting-recorder.install
-makepkg -si
+curl -fsSL https://raw.githubusercontent.com/jankeesvw/omarchy-meeting-recorder/main/install.sh | bash
 ```
 
-Pacman then knows about it, so `sudo pacman -R omarchy-meeting-recorder-bin` removes it again. An AUR package is on the way, as soon as the AUR takes new accounts again.
+That builds a pacman package from the [PKGBUILD](packaging/aur/PKGBUILD) in this repository ([install.sh](install.sh) is ten lines, read it first if you like), so `sudo pacman -R omarchy-meeting-recorder-bin` removes it again. An AUR package follows as soon as the AUR takes new accounts again.
 
 Then open **Meeting Recorder** from the launcher. The first transcription downloads the whisper model (about 1.6 GB, once), and the app shows you how far along it is. The package prints how to add the Hyprland window rules and the bar widget; both are also explained [below](#build-from-source).
 
