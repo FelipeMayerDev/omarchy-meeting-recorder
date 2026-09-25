@@ -681,7 +681,7 @@ fn transcribe_remote_meeting(
             events,
             abort,
         )?;
-        if language == "auto" {
+        if language == "auto" && found != "auto" && found != "unknown" {
             language = found.clone();
             detected = Some(found);
         }
@@ -881,7 +881,11 @@ fn remote_single(
     Ok(Transcript {
         segments,
         language: if language == "auto" {
-            detected
+            if detected == "auto" || detected == "unknown" {
+                "unknown".to_owned()
+            } else {
+                detected
+            }
         } else {
             language.to_owned()
         },
@@ -948,7 +952,7 @@ fn parse_remote_transcript(text: &str) -> Result<(String, Vec<(i64, i64, String)
     let language = result["language"]
         .as_str()
         .filter(|language| !language.is_empty())
-        .ok_or("remote transcription result has no language")?
+        .unwrap_or("auto")
         .to_owned();
     let segments = result["segments"]
         .as_array()
@@ -1663,5 +1667,11 @@ mod tests {
         .unwrap();
         assert_eq!(language, "pt");
         assert_eq!(segments, [(1250, 2500, "Olá, mundo.".into())]);
+    }
+
+    #[test]
+    fn remote_transcription_without_language_stays_automatic() {
+        let (language, _) = parse_remote_transcript(r#"{"segments":[]}"#).unwrap();
+        assert_eq!(language, "auto");
     }
 }

@@ -313,12 +313,13 @@ impl Recorder {
         remote_ip_row.set_text(&settings::load_remote_ip());
         let remote_key_row = adw::ActionRow::builder()
             .title("Remote API key")
-            .subtitle("Only kept while Meeting Recorder is open")
+            .subtitle("Saved in your system keyring")
             .build();
         let remote_key = gtk::PasswordEntry::builder()
             .hexpand(true)
             .show_peek_icon(true)
             .build();
+        remote_key.set_text(&settings::load_remote_api_key());
         remote_key_row.add_suffix(&remote_key);
         group.add(&title_row);
         group.add(&format_row);
@@ -904,6 +905,24 @@ impl Recorder {
                 settings::save_remote_ip(row.text().trim());
             }
         });
+        let weak = Rc::downgrade(self);
+        self.remote_key.connect_activate(move |_| {
+            if let Some(r) = weak.upgrade()
+                && !settings::save_remote_api_key(&r.remote_key.text())
+            {
+                r.toast("Could not save the API key in the system keyring");
+            }
+        });
+        let key_focus = gtk::EventControllerFocus::new();
+        let weak = Rc::downgrade(self);
+        key_focus.connect_leave(move |_| {
+            if let Some(r) = weak.upgrade()
+                && !settings::save_remote_api_key(&r.remote_key.text())
+            {
+                r.toast("Could not save the API key in the system keyring");
+            }
+        });
+        self.remote_key.add_controller(key_focus);
 
         // A click on a transcript row plays the meeting from there.
         let weak = Rc::downgrade(self);
@@ -1156,6 +1175,7 @@ impl Recorder {
         if api_key.is_empty() {
             return Err("Enter the remote server API key".into());
         }
+        let _ = settings::save_remote_api_key(&api_key);
         Ok((ip, api_key))
     }
 

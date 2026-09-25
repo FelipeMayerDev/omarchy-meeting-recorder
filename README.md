@@ -74,7 +74,7 @@ Drop an audio file on the window, or click **Import an audio file**: a phone mem
 
 ### Optional remote processing
 
-Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. For an imported file, Speakers sets its total number of voices. For a recording, Remote speakers sets the number of people in the computer-audio track; your microphone is already identified as you. Leave either on **Automatic** to let the model detect it.
+Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is saved in your desktop keyring, not in the settings file. For an imported file, Speakers sets its total number of voices. For a recording, Remote speakers sets the number of people in the computer-audio track; your microphone is already identified as you. Leave either on **Automatic** to let the model detect it.
 
 ### Gives you a transcript you can listen to
 
