@@ -72,9 +72,9 @@ Drop an audio file on the window, or click **Import an audio file**: a phone mem
 
 ![An imported design review: three speakers, each in their own colour](screenshots/import-speakers.webp)
 
-### Optional remote diarization
+### Optional remote processing
 
-Speaker diarization is **Local** by default. Choose **Remote** on the start screen to send the audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. Leave the number of speakers on **Automatic** to let the server detect it, or choose a fixed number when you know it.
+Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. Leave the number of speakers on **Automatic** to let the server detect it, or choose a fixed number when you know it.
 
 ### Gives you a transcript you can listen to
 
@@ -170,7 +170,7 @@ The app looks for `ggml-<model>.bin`, for instance `ggml-large-v3-turbo.bin`, in
 
 ## Privacy
 
-With local diarization, the audio, transcript and everything else stay on your computer. Remote diarization sends audio to the IP address and API key you enter. The only other thing that leaves it is the transcript text for the chapters, and only when you have set a default agent: it goes to that agent's service, the one you already chose and pay for. No agent, no chapters, nothing sent.
+With local processing, the audio, transcript and everything else stay on your computer. Remote diarization or transcription sends audio to the IP address and API key you enter. The only other thing that leaves it is the transcript text for the chapters, and only when you have set a default agent: it goes to that agent's service, the one you already chose and pay for. No agent, no chapters, nothing sent.
 
 ## Requirements
 

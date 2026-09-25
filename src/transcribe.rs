@@ -71,6 +71,13 @@ pub struct Transcript {
     pub duration_secs: i64,
 }
 
+/// Where speech recognition runs. Speaker matching stays in this app.
+#[derive(Clone)]
+pub enum Engine {
+    Local,
+    Remote { ip: String, api_key: String },
+}
+
 fn emit(events: &Events, event: Event) {
     let _ = events.send_blocking(event);
 }
@@ -531,6 +538,7 @@ pub fn transcribe(
     computer: &[f32],
     language: &str,
     diarization: &crate::diarize::Provider,
+    engine: &Engine,
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
@@ -547,6 +555,18 @@ pub fn transcribe(
     if is_silent(mic) && is_silent(computer) {
         emit(events, Event::Progress(1.0));
         return Ok(empty(language));
+    }
+    if let Engine::Remote { ip, api_key } = engine {
+        return transcribe_remote_meeting(
+            mic,
+            computer,
+            language,
+            diarization,
+            ip,
+            api_key,
+            events,
+            abort,
+        );
     }
 
     // Each side goes through whisper on its own: whisper follows one voice at
@@ -597,6 +617,68 @@ pub fn transcribe(
         if language == "auto"
             && let Some(found) = found
         {
+            language = found.clone();
+            detected = Some(found);
+        }
+        segments.extend(lines);
+        done += share;
+    }
+    emit(events, Event::Progress(1.0));
+    Ok(Transcript {
+        segments: interleave(segments),
+        language: if language == "auto" {
+            detected.unwrap_or_else(|| "unknown".into())
+        } else {
+            language
+        },
+        duration_secs,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transcribe_remote_meeting(
+    mic: &[f32],
+    computer: &[f32],
+    language: &str,
+    diarization: &crate::diarize::Provider,
+    ip: &str,
+    api_key: &str,
+    events: &Events,
+    abort: &Abort,
+) -> Result<Transcript, String> {
+    let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
+    let remote = remote_voices(computer, diarization, events, abort)?;
+    let mut sides = [
+        (mic, Speakers::Side("You", Vec::new())),
+        (computer, Speakers::Side("Remote", remote)),
+    ];
+    sides.sort_by_key(|(track, _)| std::cmp::Reverse(track.len()));
+    let total = sides
+        .iter()
+        .filter(|(track, _)| !is_silent(track))
+        .map(|(track, _)| track.len())
+        .sum::<usize>()
+        .max(1) as f64;
+    let mut language = language.to_owned();
+    let mut detected = None;
+    let mut segments = Vec::new();
+    let mut done = 0.0;
+    for (track, speakers) in sides {
+        if is_silent(track) {
+            continue;
+        }
+        let share = track.len() as f64 / total;
+        let (lines, found) = remote_track(
+            track,
+            &language,
+            &speakers,
+            ip,
+            api_key,
+            (done, done + share),
+            events,
+            abort,
+        )?;
+        if language == "auto" {
             language = found.clone();
             detected = Some(found);
         }
@@ -718,6 +800,7 @@ pub fn transcribe_single(
     language: &str,
     speakers: Option<usize>,
     diarization: &crate::diarize::Provider,
+    engine: &Engine,
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
@@ -747,15 +830,148 @@ pub fn transcribe_single(
         _ => crate::diarize::turns(track, speakers, diarization, events, abort)?,
     };
     let speakers = Speakers::Turns(turns);
-    whisper_pass(
-        &level,
-        &regions,
-        &speakers,
+    match engine {
+        Engine::Local => whisper_pass(
+            &level,
+            &regions,
+            &speakers,
+            language,
+            duration_secs,
+            events,
+            abort,
+        ),
+        Engine::Remote { ip, api_key } => remote_single(
+            &level,
+            &speakers,
+            language,
+            duration_secs,
+            ip,
+            api_key,
+            events,
+            abort,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn remote_single(
+    track: &[f32],
+    speakers: &Speakers,
+    language: &str,
+    duration_secs: i64,
+    ip: &str,
+    api_key: &str,
+    events: &Events,
+    abort: &Abort,
+) -> Result<Transcript, String> {
+    let (segments, detected) = remote_track(
+        track,
         language,
-        duration_secs,
+        speakers,
+        ip,
+        api_key,
+        (0.0, 1.0),
         events,
         abort,
-    )
+    )?;
+    Ok(Transcript {
+        segments,
+        language: if language == "auto" {
+            detected
+        } else {
+            language.to_owned()
+        },
+        duration_secs,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn remote_track(
+    track: &[f32],
+    language: &str,
+    speakers: &Speakers,
+    ip: &str,
+    api_key: &str,
+    progress: (f64, f64),
+    events: &Events,
+    abort: &Abort,
+) -> Result<(Vec<Segment>, String), String> {
+    if abort.load(Ordering::Relaxed) {
+        return Err(CANCELLED.into());
+    }
+    if api_key.trim().is_empty() {
+        return Err("remote transcription needs an API key".into());
+    }
+    emit(events, Event::Stage("Transcribing remotely".into()));
+    emit(events, Event::Progress(progress.0));
+    let response = ureq::post(&crate::diarize::remote_url(ip, "transcribe")?)
+        .header("X-API-Key", api_key)
+        .header(
+            "Content-Type",
+            "multipart/form-data; boundary=omarchy-meeting-recorder",
+        )
+        .send(crate::diarize::multipart(track, None, Some(language)).as_slice())
+        .map_err(|e| format!("remote transcription failed: {e}"))?;
+    let mut text = String::new();
+    response
+        .into_body()
+        .into_reader()
+        .read_to_string(&mut text)
+        .map_err(|e| format!("could not read remote transcription result: {e}"))?;
+    let (language, raw) = parse_remote_transcript(&text)?;
+    let lines: Vec<Segment> = raw
+        .into_iter()
+        .map(|(start_ms, end_ms, text)| Segment {
+            start_ms,
+            end_ms,
+            speaker: speakers.speaker(start_ms, end_ms),
+            text,
+        })
+        .collect();
+    for line in &lines {
+        emit(
+            events,
+            Event::Segment(format!("{}: {}", line.speaker, line.text)),
+        );
+    }
+    emit(events, Event::Progress(progress.1));
+    Ok((lines, language))
+}
+
+fn parse_remote_transcript(text: &str) -> Result<(String, Vec<(i64, i64, String)>), String> {
+    let result: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("invalid remote transcription result: {e}"))?;
+    let language = result["language"]
+        .as_str()
+        .filter(|language| !language.is_empty())
+        .ok_or("remote transcription result has no language")?
+        .to_owned();
+    let segments = result["segments"]
+        .as_array()
+        .ok_or("remote transcription result has no segments")?;
+    let mut out = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let start = segment["start"]
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0)
+            .ok_or("remote transcription segment has an invalid start")?;
+        let end = segment["end"]
+            .as_f64()
+            .filter(|n| n.is_finite() && *n > start)
+            .ok_or("remote transcription segment has an invalid end")?;
+        let text = segment["text"]
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .ok_or("remote transcription segment has no text")?
+            .to_owned();
+        out.push((
+            (start * 1000.0).round() as i64,
+            (end * 1000.0).round() as i64,
+            text,
+        ));
+    }
+    Ok((language, out))
 }
 
 /// The shared part: whisper over the stretches with sound, then the lines.
@@ -1275,6 +1491,7 @@ pub fn cli(args: &[String]) -> glib::ExitCode {
             &computer,
             &language,
             &crate::diarize::Provider::Local,
+            &Engine::Local,
             events,
             abort,
         )
@@ -1314,6 +1531,7 @@ pub fn cli_file(args: &[String]) -> glib::ExitCode {
             &language,
             speakers,
             &crate::diarize::Provider::Local,
+            &Engine::Local,
             events,
             abort,
         )
@@ -1430,5 +1648,15 @@ mod tests {
             .map(|s| s.text.as_str())
             .collect();
         assert_eq!(yours, ["The review is still pending, I see."]);
+    }
+
+    #[test]
+    fn parses_timestamped_remote_transcription() {
+        let (language, segments) = parse_remote_transcript(
+            r#"{"language":"pt","segments":[{"start":1.25,"end":2.5,"text":" Olá, mundo. "}]}"#,
+        )
+        .unwrap();
+        assert_eq!(language, "pt");
+        assert_eq!(segments, [(1250, 2500, "Olá, mundo.".into())]);
     }
 }

@@ -71,20 +71,13 @@ fn remote_turns(
     if abort.load(std::sync::atomic::Ordering::Relaxed) {
         return Err(crate::transcribe::CANCELLED.into());
     }
-    let ip: IpAddr = ip
-        .parse()
-        .map_err(|_| "remote diarization needs a valid server IP address")?;
     if api_key.trim().is_empty() {
         return Err("remote diarization needs an API key".into());
     }
-    let host = match ip {
-        IpAddr::V4(ip) => ip.to_string(),
-        IpAddr::V6(ip) => format!("[{ip}]"),
-    };
     let _ = events.send_blocking(Event::Stage("Finding speakers remotely".into()));
     let _ = events.send_blocking(Event::Progress(0.0));
-    let body = multipart(samples, speakers);
-    let response = ureq::post(&format!("http://{host}:8000/diarize"))
+    let body = multipart(samples, speakers, None);
+    let response = ureq::post(&remote_url(ip, "diarize")?)
         .header("X-API-Key", api_key)
         .header(
             "Content-Type",
@@ -103,7 +96,22 @@ fn remote_turns(
     Ok(turns)
 }
 
-fn multipart(samples: &[f32], speakers: Option<usize>) -> Vec<u8> {
+pub(crate) fn remote_url(ip: &str, route: &str) -> Result<String, String> {
+    let ip: IpAddr = ip
+        .parse()
+        .map_err(|_| "remote server needs a valid IP address")?;
+    let host = match ip {
+        IpAddr::V4(ip) => ip.to_string(),
+        IpAddr::V6(ip) => format!("[{ip}]"),
+    };
+    Ok(format!("http://{host}:8000/{route}"))
+}
+
+pub(crate) fn multipart(
+    samples: &[f32],
+    speakers: Option<usize>,
+    language: Option<&str>,
+) -> Vec<u8> {
     const BOUNDARY: &str = "omarchy-meeting-recorder";
     let wav = wav(samples);
     let mut body = Vec::with_capacity(wav.len() + 512);
@@ -115,6 +123,11 @@ fn multipart(samples: &[f32], speakers: Option<usize>) -> Vec<u8> {
     if let Some(speakers) = speakers {
         body.extend_from_slice(
             format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"num_speakers\"\r\n\r\n{speakers}\r\n").as_bytes(),
+        );
+    }
+    if let Some(language) = language {
+        body.extend_from_slice(
+            format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n{language}\r\n").as_bytes(),
         );
     }
     body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
@@ -442,8 +455,8 @@ mod tests {
 
     #[test]
     fn automatic_remote_diarization_omits_the_speaker_count() {
-        let automatic = multipart(&[], None);
-        let fixed = multipart(&[], Some(3));
+        let automatic = multipart(&[], None, None);
+        let fixed = multipart(&[], Some(3), None);
         let has = |body: &[u8], field: &[u8]| body.windows(field.len()).any(|part| part == field);
         assert!(!has(&automatic, b"num_speakers"));
         assert!(has(&fixed, b"name=\"num_speakers\"\r\n\r\n3"));

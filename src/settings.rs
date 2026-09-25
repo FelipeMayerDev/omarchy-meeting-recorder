@@ -76,6 +76,17 @@ pub fn save_diarization(mode: &str) {
     save("diarization", mode);
 }
 
+pub fn load_transcription() -> &'static str {
+    match load()["transcription"].as_str() {
+        Some("remote") => "remote",
+        _ => "local",
+    }
+}
+
+pub fn save_transcription(mode: &str) {
+    save("transcription", mode);
+}
+
 /// The remote server address is not secret; its API key deliberately is not
 /// written to the settings file.
 pub fn load_remote_ip() -> String {

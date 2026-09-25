@@ -133,6 +133,7 @@ struct Recorder {
     title_row: adw::EntryRow,
     format_row: adw::ComboRow,
     language_row: adw::ComboRow,
+    transcription_row: adw::ComboRow,
     diarization_row: adw::ComboRow,
     remote_ip_row: adw::EntryRow,
     remote_key_row: adw::ActionRow,
@@ -276,6 +277,16 @@ impl Recorder {
                 .position(|(code, _)| *code == saved)
                 .unwrap_or(0) as u32,
         );
+        let transcription_row = adw::ComboRow::builder()
+            .title("Transcription")
+            .subtitle("Recognize speech here or on the remote GPU server")
+            .model(&gtk::StringList::new(&["Local", "Remote"]))
+            .build();
+        transcription_row.set_selected(if settings::load_transcription() == "remote" {
+            1
+        } else {
+            0
+        });
         let diarization_row = adw::ComboRow::builder()
             .title("Speaker diarization")
             .subtitle("Separate speakers locally or on a remote server")
@@ -300,6 +311,7 @@ impl Recorder {
         group.add(&title_row);
         group.add(&format_row);
         group.add(&language_row);
+        group.add(&transcription_row);
         group.add(&diarization_row);
         group.add(&remote_ip_row);
         group.add(&remote_key_row);
@@ -607,6 +619,7 @@ impl Recorder {
             title_row,
             format_row,
             language_row,
+            transcription_row,
             diarization_row,
             remote_ip_row,
             remote_key_row,
@@ -669,7 +682,7 @@ impl Recorder {
             manifest: RefCell::default(),
         });
         recorder.connect_signals(&open_button, &new_button, &quit_action);
-        recorder.update_diarization_rows();
+        recorder.update_remote_rows();
         let weak = Rc::downgrade(&recorder);
         glib::spawn_future_local(async move {
             while let Ok(command) = commands_rx.recv().await {
@@ -847,7 +860,16 @@ impl Recorder {
                 if !r.loading.get() {
                     settings::save_diarization(r.selected_diarization_key());
                 }
-                r.update_diarization_rows();
+                r.update_remote_rows();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.transcription_row.connect_selected_notify(move |_| {
+            if let Some(r) = weak.upgrade() {
+                if !r.loading.get() {
+                    settings::save_transcription(r.selected_transcription_key());
+                }
+                r.update_remote_rows();
             }
         });
         let weak = Rc::downgrade(self);
@@ -1084,27 +1106,52 @@ impl Recorder {
         }
     }
 
+    fn selected_transcription_key(&self) -> &'static str {
+        if self.transcription_row.selected() == 1 {
+            "remote"
+        } else {
+            "local"
+        }
+    }
+
+    fn remote_config(&self) -> Result<(String, String), String> {
+        let ip = self.remote_ip_row.text().trim().to_owned();
+        if ip.parse::<std::net::IpAddr>().is_err() {
+            return Err("Enter the remote server's IP address".into());
+        }
+        let api_key = self.remote_key.text().trim().to_owned();
+        if api_key.is_empty() {
+            return Err("Enter the remote server API key".into());
+        }
+        Ok((ip, api_key))
+    }
+
     fn diarization(&self) -> Result<crate::diarize::Provider, String> {
         match self.selected_diarization_key() {
             "off" => Ok(crate::diarize::Provider::Off),
             "local" => Ok(crate::diarize::Provider::Local),
             "remote" => {
-                let ip = self.remote_ip_row.text().trim().to_owned();
-                if ip.parse::<std::net::IpAddr>().is_err() {
-                    return Err("Enter the remote diarization server's IP address".into());
-                }
-                let api_key = self.remote_key.text().trim().to_owned();
-                if api_key.is_empty() {
-                    return Err("Enter the remote diarization API key".into());
-                }
+                let (ip, api_key) = self.remote_config()?;
                 Ok(crate::diarize::Provider::Remote { ip, api_key })
             }
             _ => unreachable!(),
         }
     }
 
-    fn update_diarization_rows(&self) {
-        let remote = self.selected_diarization_key() == "remote";
+    fn transcription(&self) -> Result<transcribe::Engine, String> {
+        match self.selected_transcription_key() {
+            "local" => Ok(transcribe::Engine::Local),
+            "remote" => {
+                let (ip, api_key) = self.remote_config()?;
+                Ok(transcribe::Engine::Remote { ip, api_key })
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn update_remote_rows(&self) {
+        let remote = self.selected_diarization_key() == "remote"
+            || self.selected_transcription_key() == "remote";
         self.remote_ip_row.set_visible(remote);
         self.remote_key_row.set_visible(remote);
     }
@@ -1151,6 +1198,7 @@ impl Recorder {
         self.language_row
             .set_sensitive(!matches!(state, State::Stopping | State::Transcribing));
         let can_change_diarization = matches!(state, State::Idle | State::Done);
+        self.transcription_row.set_sensitive(can_change_diarization);
         self.diarization_row.set_sensitive(can_change_diarization);
         self.remote_ip_row.set_sensitive(can_change_diarization);
         self.remote_key.set_sensitive(can_change_diarization);
@@ -1773,6 +1821,7 @@ impl Recorder {
             return Err("no meeting folder".into());
         };
         let diarization = self.diarization()?;
+        let transcription = self.transcription()?;
         self.set_compact(false);
         if self.animation_since.get().is_none() {
             self.animation_since.set(Some(std::time::Instant::now()));
@@ -1795,6 +1844,7 @@ impl Recorder {
                         language,
                         speakers,
                         &diarization,
+                        &transcription,
                         &events_tx,
                         &abort,
                     )
@@ -1812,6 +1862,7 @@ impl Recorder {
                             &computer,
                             language,
                             &diarization,
+                            &transcription,
                             &events_tx,
                             &abort,
                         )
