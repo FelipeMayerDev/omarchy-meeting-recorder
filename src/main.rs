@@ -10,7 +10,6 @@ mod chapters;
 mod diarize;
 mod export;
 mod ipc;
-mod live;
 mod meeting;
 mod models;
 mod nemotron;

@@ -76,8 +76,6 @@ Drop an audio file on the window, or click **Import an audio file**: a phone mem
 
 Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is saved in your desktop keyring, not in the settings file. For an imported file, Speakers sets its total number of voices. For a recording, Remote speakers sets the number of people in the computer-audio track; your microphone is already identified as you. Leave either on **Automatic** to let the model detect it.
 
-With remote diarization, **Live diarization** opens a provisional speaker timeline during recording. It refreshes every few seconds from overlapping audio windows; after the call, the normal full-recording diarization remains the final result.
-
 ### Gives you a transcript you can listen to
 
 The done screen puts the transcript on the right: the time, the speaker and the text in their own columns, one paragraph per turn. Above it sits a player with a waveform of both sides, your side above the line and the other side below it. Click or drag in the waveform to seek, or click any line to play from there. The line that is playing is highlighted and the transcript scrolls along.
