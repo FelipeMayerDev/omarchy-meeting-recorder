@@ -1938,8 +1938,7 @@ impl Recorder {
         *self.live_abort.borrow_mut() = Some(abort.clone());
         let (updates, received) = async_channel::unbounded();
         let chunks = self.system.subscribe();
-        let speakers = self.selected_remote_speaker_count();
-        std::thread::spawn(move || crate::live::run(chunks, provider, speakers, updates, abort));
+        std::thread::spawn(move || crate::live::run(chunks, provider, updates, abort));
         let weak = Rc::downgrade(self);
         glib::spawn_future_local(async move {
             while let Ok(update) = received.recv().await {

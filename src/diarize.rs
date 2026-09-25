@@ -59,6 +59,45 @@ pub fn turns(
     Ok(renumber(raw))
 }
 
+/// Sends a short chunk to NeMo's stateful streaming endpoint.  The endpoint
+/// retains the speaker cache for `session`, so its numeric labels stay stable.
+pub fn live_turns(
+    samples: &[f32],
+    provider: &Provider,
+    session: &str,
+    offset_ms: i64,
+    abort: &Abort,
+) -> Result<Vec<Turn>, String> {
+    if abort.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(crate::transcribe::CANCELLED.into());
+    }
+    let Provider::Remote { ip, api_key } = provider else {
+        return Err("live diarization needs a remote server".into());
+    };
+    if api_key.trim().is_empty() {
+        return Err("remote diarization needs an API key".into());
+    }
+    let url = format!(
+        "{}?session={session}&offset_ms={offset_ms}",
+        remote_url(ip, "live")?
+    );
+    let response = ureq::post(&url)
+        .header("X-API-Key", api_key)
+        .header(
+            "Content-Type",
+            "multipart/form-data; boundary=omarchy-meeting-recorder",
+        )
+        .send(multipart(samples, None, None).as_slice())
+        .map_err(|e| format!("live diarization failed: {e}"))?;
+    let mut text = String::new();
+    response
+        .into_body()
+        .into_reader()
+        .read_to_string(&mut text)
+        .map_err(|e| format!("could not read live diarization result: {e}"))?;
+    parse_live_turns(&text)
+}
+
 /// Sends the 16 kHz mono track to the compatible `/diarize` endpoint.
 fn remote_turns(
     samples: &[f32],
@@ -104,7 +143,8 @@ pub(crate) fn remote_url(ip: &str, route: &str) -> Result<String, String> {
         IpAddr::V4(ip) => ip.to_string(),
         IpAddr::V6(ip) => format!("[{ip}]"),
     };
-    Ok(format!("http://{host}:8000/{route}"))
+    let port = if route == "live" { 8001 } else { 8000 };
+    Ok(format!("http://{host}:{port}/{route}"))
 }
 
 pub(crate) fn multipart(
@@ -191,6 +231,41 @@ fn parse_remote_turns(text: &str) -> Result<Vec<Turn>, String> {
         ));
     }
     Ok(renumber(raw))
+}
+
+fn parse_live_turns(text: &str) -> Result<Vec<Turn>, String> {
+    let result: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("invalid live diarization result: {e}"))?;
+    let segments = result["segments"]
+        .as_array()
+        .ok_or("live diarization result has no segments")?;
+    let mut turns = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let speaker = segment["speaker"]
+            .as_u64()
+            .or_else(|| {
+                segment["speaker"]
+                    .as_str()
+                    .and_then(|value| value.parse().ok())
+            })
+            .ok_or("live diarization segment has an invalid speaker")?
+            as usize;
+        let start = segment["start"]
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0)
+            .ok_or("live diarization segment has an invalid start")?;
+        let end = segment["end"]
+            .as_f64()
+            .filter(|n| n.is_finite() && *n > start)
+            .ok_or("live diarization segment has an invalid end")?;
+        turns.push(Turn {
+            start_ms: (start * 1000.0).round() as i64,
+            end_ms: (end * 1000.0).round() as i64,
+            speaker,
+        });
+    }
+    turns.sort_by_key(|turn| (turn.start_ms, turn.speaker));
+    Ok(turns)
 }
 
 /// Stretches where a speaker's probability is over one half, in ms. A frame
@@ -460,5 +535,12 @@ mod tests {
         let has = |body: &[u8], field: &[u8]| body.windows(field.len()).any(|part| part == field);
         assert!(!has(&automatic, b"num_speakers"));
         assert!(has(&fixed, b"name=\"num_speakers\"\r\n\r\n3"));
+    }
+
+    #[test]
+    fn live_labels_are_not_renumbered_per_chunk() {
+        let turns =
+            parse_live_turns(r#"{"segments":[{"speaker":3,"start":2.0,"end":3.0}]}"#).unwrap();
+        assert_eq!(turns[0].speaker, 3);
     }
 }
