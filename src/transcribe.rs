@@ -537,6 +537,7 @@ pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
     language: &str,
+    remote_speakers: Option<usize>,
     diarization: &crate::diarize::Provider,
     engine: &Engine,
     events: &Events,
@@ -561,6 +562,7 @@ pub fn transcribe(
             mic,
             computer,
             language,
+            remote_speakers,
             diarization,
             ip,
             api_key,
@@ -579,7 +581,7 @@ pub fn transcribe(
         emit(events, Event::Progress(1.0));
         return Ok(empty(language));
     }
-    let remote = remote_voices(&computer, diarization, events, abort)?;
+    let remote = remote_voices(&computer, remote_speakers, diarization, events, abort)?;
     let context = load_whisper(events, abort)?;
 
     let length = |regions: &[Region]| regions.iter().map(|r| r.end - r.start).sum::<usize>();
@@ -640,6 +642,7 @@ fn transcribe_remote_meeting(
     mic: &[f32],
     computer: &[f32],
     language: &str,
+    remote_speakers: Option<usize>,
     diarization: &crate::diarize::Provider,
     ip: &str,
     api_key: &str,
@@ -647,7 +650,7 @@ fn transcribe_remote_meeting(
     abort: &Abort,
 ) -> Result<Transcript, String> {
     let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
-    let remote = remote_voices(computer, diarization, events, abort)?;
+    let remote = remote_voices(computer, remote_speakers, diarization, events, abort)?;
     let mut sides = [
         (mic, Speakers::Side("You", Vec::new())),
         (computer, Speakers::Side("Remote", remote)),
@@ -769,6 +772,7 @@ fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
 /// transcript; the other side then stays one speaker.
 fn remote_voices(
     computer: &[f32],
+    speakers: Option<usize>,
     diarization: &crate::diarize::Provider,
     events: &Events,
     abort: &Abort,
@@ -776,7 +780,7 @@ fn remote_voices(
     if is_silent(computer) {
         return Ok(Vec::new());
     }
-    match crate::diarize::turns(computer, None, diarization, events, abort) {
+    match crate::diarize::turns(computer, speakers, diarization, events, abort) {
         Ok(turns) if turns.iter().any(|t| t.speaker > 0) => Ok(turns),
         Ok(_) => Ok(Vec::new()),
         Err(e) if e == CANCELLED => Err(e),
@@ -1490,6 +1494,7 @@ pub fn cli(args: &[String]) -> glib::ExitCode {
             &mic,
             &computer,
             &language,
+            None,
             &crate::diarize::Provider::Local,
             &Engine::Local,
             events,

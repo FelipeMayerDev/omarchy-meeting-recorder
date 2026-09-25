@@ -42,7 +42,7 @@ The app opens ready, not recording. The two meters are live from the start, a st
 
 ### Records both sides of the call
 
-Your microphone and whatever your computer plays are recorded as two separate tracks. The name, the audio format and the language can all still be changed during the call.
+Your microphone and whatever your computer plays are recorded as two separate tracks. The name, the audio format and the language can all still be changed during the call. Turn off **Process after recording** to only save the audio; open the saved meeting later and use **Transcribe again** when you are ready.
 
 <p align="center"><img src="screenshots/recording.webp" alt="Recording: both meters moving, the clock, Pause and Stop recording" width="440">&nbsp;&nbsp;<img src="screenshots/paused.webp" alt="Paused: both waves frozen and dimmed with a PAUSED sign, Resume and Stop recording" width="440"></p>
 
@@ -66,7 +66,7 @@ When you stop, the window switches straight to the transcribing animation: it sa
 
 ### Imports any recording
 
-Drop an audio file on the window, or click **Import an audio file**: a phone memo, a call you recorded elsewhere, anything ffmpeg can read. Pick the language and how many people speak, or leave Speakers on Automatic, and the file is transcribed the same way. Since one file has no second track, the voices themselves are told apart, and each speaker gets a colour from your theme.
+Drop an audio file on the window, or click **Import an audio file**: a phone memo, a call you recorded elsewhere, anything ffmpeg can read. Pick the language and how many people speak (up to eight), or leave Speakers on Automatic, and the file is transcribed the same way. Since one file has no second track, the voices themselves are told apart, and each speaker gets a colour from your theme.
 
 <p align="center"><img src="screenshots/drop-overlay.webp" alt="Dragging an mp3 from Nautilus onto the window: a dashed border and Drop to import" width="360">&nbsp;&nbsp;<img src="screenshots/import-dialog.webp" alt="The Import audio dialog with Language and Speakers set to Automatic" width="360"></p>
 
@@ -74,7 +74,7 @@ Drop an audio file on the window, or click **Import an audio file**: a phone mem
 
 ### Optional remote processing
 
-Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. Leave the number of speakers on **Automatic** to let the server detect it, or choose a fixed number when you know it.
+Speaker diarization and transcription are **Local** by default. Choose **Remote** for either on the start screen to send audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. For an imported file, Speakers sets its total number of voices. For a recording, Remote speakers sets the number of people in the computer-audio track; your microphone is already identified as you. Leave either on **Automatic** to let the model detect it.
 
 ### Gives you a transcript you can listen to
 

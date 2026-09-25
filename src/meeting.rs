@@ -32,6 +32,8 @@ pub struct Manifest {
     pub imported: Option<String>,
     /// How many speakers were asked for on import; None means automatic.
     pub speaker_count: Option<usize>,
+    /// How many people share the computer-audio track in a recording.
+    pub remote_speaker_count: Option<usize>,
     /// The whisper model the transcript was made with.
     pub model: Option<String>,
     /// Chapters made by an agent, empty when there are none.
@@ -53,6 +55,7 @@ impl Manifest {
             "speakers": self.speakers,
             "imported": self.imported,
             "speaker_count": self.speaker_count,
+            "remote_speaker_count": self.remote_speaker_count,
             "model": self.model,
             "chapters": self.chapters.iter()
                 .map(|c| json!({ "start_ms": c.start_ms, "title": c.title }))
@@ -83,6 +86,7 @@ impl Manifest {
             },
             imported: value["imported"].as_str().map(str::to_owned),
             speaker_count: value["speaker_count"].as_u64().map(|n| n as usize),
+            remote_speaker_count: value["remote_speaker_count"].as_u64().map(|n| n as usize),
             model: value["model"].as_str().map(str::to_owned),
             chapters: value["chapters"]
                 .as_array()
@@ -241,6 +245,7 @@ fn from_folder(dir: &Path) -> Option<Manifest> {
         speakers: vec![DEFAULT_YOU.to_owned(), DEFAULT_REMOTE.to_owned()],
         imported: None,
         speaker_count: None,
+        remote_speaker_count: None,
         model: None,
         chapters: Vec::new(),
         chapters_by: None,

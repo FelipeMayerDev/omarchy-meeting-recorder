@@ -87,6 +87,21 @@ pub fn save_transcription(mode: &str) {
     save("transcription", mode);
 }
 
+/// Whether a recording should start transcription as soon as it is saved.
+pub fn load_process_after_recording() -> bool {
+    load()["process_after_recording"].as_bool().unwrap_or(true)
+}
+
+pub fn save_process_after_recording(enabled: bool) {
+    let mut settings = load();
+    settings["process_after_recording"] = serde_json::Value::Bool(enabled);
+    let path = path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, settings.to_string());
+}
+
 /// The remote server address is not secret; its API key deliberately is not
 /// written to the settings file.
 pub fn load_remote_ip() -> String {

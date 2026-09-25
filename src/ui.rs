@@ -54,9 +54,9 @@ impl State {
 /// Where a transcription reads its two tracks from.
 enum Tracks {
     /// The staging files of a recording that just stopped.
-    Raw(PathBuf),
+    Raw(PathBuf, Option<usize>),
     /// The `.tracks` directory kept in a meeting folder.
-    Kept(PathBuf),
+    Kept(PathBuf, Option<usize>),
     /// One imported file, with the number of speakers asked for.
     Single(PathBuf, Option<usize>),
 }
@@ -67,7 +67,7 @@ fn source_track(meeting_dir: &std::path::Path) -> PathBuf {
 }
 
 /// Choices in the import dialog: automatic, then a fixed number.
-const SPEAKER_CHOICES: [&str; 7] = ["Automatic", "1", "2", "3", "4", "5", "6"];
+const SPEAKER_CHOICES: [&str; 9] = ["Automatic", "1", "2", "3", "4", "5", "6", "7", "8"];
 
 /// Runs the app. `open` is a `.meeting-recorder` file or a meeting folder to show
 /// instead of starting a new recording.
@@ -135,6 +135,8 @@ struct Recorder {
     language_row: adw::ComboRow,
     transcription_row: adw::ComboRow,
     diarization_row: adw::ComboRow,
+    remote_speakers_row: adw::ComboRow,
+    process_after_row: adw::SwitchRow,
     remote_ip_row: adw::EntryRow,
     remote_key_row: adw::ActionRow,
     remote_key: gtk::PasswordEntry,
@@ -297,6 +299,16 @@ impl Recorder {
             "remote" => 2,
             _ => 1,
         });
+        let remote_speakers_row = adw::ComboRow::builder()
+            .title("Remote speakers")
+            .subtitle("People in computer audio; automatic is usually best")
+            .model(&gtk::StringList::new(&SPEAKER_CHOICES))
+            .build();
+        let process_after_row = adw::SwitchRow::builder()
+            .title("Process after recording")
+            .subtitle("Turn off to save audio and transcribe it later")
+            .active(settings::load_process_after_recording())
+            .build();
         let remote_ip_row = adw::EntryRow::builder().title("Remote server IP").build();
         remote_ip_row.set_text(&settings::load_remote_ip());
         let remote_key_row = adw::ActionRow::builder()
@@ -313,6 +325,8 @@ impl Recorder {
         group.add(&language_row);
         group.add(&transcription_row);
         group.add(&diarization_row);
+        group.add(&remote_speakers_row);
+        group.add(&process_after_row);
         group.add(&remote_ip_row);
         group.add(&remote_key_row);
         content.append(&group);
@@ -621,6 +635,8 @@ impl Recorder {
             language_row,
             transcription_row,
             diarization_row,
+            remote_speakers_row,
+            process_after_row,
             remote_ip_row,
             remote_key_row,
             remote_key,
@@ -873,6 +889,14 @@ impl Recorder {
             }
         });
         let weak = Rc::downgrade(self);
+        self.process_after_row.connect_active_notify(move |row| {
+            if let Some(r) = weak.upgrade()
+                && !r.loading.get()
+            {
+                settings::save_process_after_recording(row.is_active());
+            }
+        });
+        let weak = Rc::downgrade(self);
         self.remote_ip_row.connect_changed(move |row| {
             if let Some(r) = weak.upgrade()
                 && !r.loading.get()
@@ -1020,7 +1044,8 @@ impl Recorder {
                 Some(m) if m.imported.is_some() => {
                     Tracks::Single(source_track(&dir), m.speaker_count)
                 }
-                _ => Tracks::Kept(dir),
+                Some(m) => Tracks::Kept(dir, m.remote_speaker_count),
+                None => Tracks::Kept(dir, None),
             };
             let this = r.clone();
             glib::spawn_future_local(async move {
@@ -1098,6 +1123,14 @@ impl Recorder {
             .unwrap_or("auto")
     }
 
+    fn selected_remote_speaker_count(&self) -> Option<usize> {
+        match self.remote_speakers_row.selected() {
+            0 => None,
+            count @ 1..=8 => Some(count as usize),
+            _ => None,
+        }
+    }
+
     fn selected_diarization_key(&self) -> &'static str {
         match self.diarization_row.selected() {
             0 => "off",
@@ -1154,6 +1187,8 @@ impl Recorder {
             || self.selected_transcription_key() == "remote";
         self.remote_ip_row.set_visible(remote);
         self.remote_key_row.set_visible(remote);
+        self.remote_speakers_row
+            .set_visible(self.selected_diarization_key() != "off");
     }
 
     fn title(&self) -> String {
@@ -1200,6 +1235,10 @@ impl Recorder {
         let can_change_diarization = matches!(state, State::Idle | State::Done);
         self.transcription_row.set_sensitive(can_change_diarization);
         self.diarization_row.set_sensitive(can_change_diarization);
+        self.remote_speakers_row
+            .set_sensitive(can_change_diarization);
+        self.process_after_row
+            .set_sensitive(matches!(state, State::Idle | State::Done));
         self.remote_ip_row.set_sensitive(can_change_diarization);
         self.remote_key.set_sensitive(can_change_diarization);
         self.button.set_sensitive(matches!(
@@ -1471,6 +1510,7 @@ impl Recorder {
             speakers: Vec::new(),
             imported: path.file_name().map(|n| n.to_string_lossy().into_owned()),
             speaker_count: speakers,
+            remote_speaker_count: None,
             model: None,
             chapters: Vec::new(),
             chapters_by: None,
@@ -1763,6 +1803,8 @@ impl Recorder {
 
         let format = self.selected_format();
         let language = self.selected_language();
+        let remote_speakers = self.selected_remote_speaker_count();
+        let process_after = self.process_after_row.is_active();
         let out = output_dir(self.started_at.get(), &self.title());
         let this = self.clone();
         glib::spawn_future_local(async move {
@@ -1791,6 +1833,7 @@ impl Recorder {
                 ],
                 imported: None,
                 speaker_count: None,
+                remote_speaker_count: remote_speakers,
                 model: None,
                 chapters: Vec::new(),
                 chapters_by: None,
@@ -1799,14 +1842,21 @@ impl Recorder {
             *this.manifest.borrow_mut() = Some(manifest);
             *this.result_dir.borrow_mut() = Some(out);
 
-            let result = this
-                .run_transcription(Tracks::Raw(staging.clone()), language)
-                .await;
+            let result = if process_after {
+                this.run_transcription(Tracks::Raw(staging.clone(), remote_speakers), language)
+                    .await
+            } else {
+                Ok(())
+            };
             // The kept tracks are enough to transcribe again; the raw files can go.
             if saved == (true, true) {
                 let _ = std::fs::remove_dir_all(&staging);
             }
-            this.hold_animation(&result).await;
+            if process_after {
+                this.hold_animation(&result).await;
+            } else {
+                this.animation.set_running(false);
+            }
             this.finished(saved.0, result);
         });
     }
@@ -1849,7 +1899,7 @@ impl Recorder {
                         &abort,
                     )
                 }),
-                Tracks::Raw(dir) | Tracks::Kept(dir) => {
+                Tracks::Raw(dir, remote_speakers) | Tracks::Kept(dir, remote_speakers) => {
                     let (mic_path, computer_path) = if dir.join("mic.raw").exists() {
                         (dir.join("mic.raw"), dir.join("system.raw"))
                     } else {
@@ -1861,6 +1911,7 @@ impl Recorder {
                             &mic,
                             &computer,
                             language,
+                            remote_speakers,
                             &diarization,
                             &transcription,
                             &events_tx,
@@ -1995,11 +2046,19 @@ impl Recorder {
         // Follow a name that was edited while the transcription ran.
         self.apply_title();
 
+        let transcript_exists = self
+            .result_dir
+            .borrow()
+            .as_ref()
+            .is_some_and(|dir| dir.join("transcript.md").is_file());
         let problem = match (&transcript, audio_ok) {
             (Err(message), _) if message == CANCELLED => {
                 Some("Transcription cancelled.".to_owned())
             }
             (Err(message), _) => Some(format!("Transcription failed: {message}.")),
+            (Ok(()), true) if !transcript_exists => Some(
+                "Not transcribed yet. Choose a language and press Transcribe again.".to_owned(),
+            ),
             (Ok(()), false) => Some("Could not save the audio.".to_owned()),
             _ => None,
         };
