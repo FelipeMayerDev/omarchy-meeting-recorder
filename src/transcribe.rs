@@ -946,40 +946,6 @@ fn remote_track(
     Ok((lines, language))
 }
 
-/// A short, provisional remote caption for the live recording window.
-/// Timestamps are relative to `track`; the live diarizer supplies the speaker.
-pub fn live_remote(
-    track: &[f32],
-    language: &str,
-    provider: &crate::diarize::Provider,
-    abort: &Abort,
-) -> Result<Vec<(i64, i64, String)>, String> {
-    if abort.load(Ordering::Relaxed) {
-        return Err(CANCELLED.into());
-    }
-    let crate::diarize::Provider::Remote { ip, api_key } = provider else {
-        return Err("live captions need a remote server".into());
-    };
-    if api_key.trim().is_empty() {
-        return Err("remote transcription needs an API key".into());
-    }
-    let response = ureq::post(&crate::diarize::remote_url(ip, "transcribe")?)
-        .header("X-API-Key", api_key)
-        .header(
-            "Content-Type",
-            "multipart/form-data; boundary=omarchy-meeting-recorder",
-        )
-        .send(crate::diarize::multipart(track, None, Some(language)).as_slice())
-        .map_err(|e| format!("live transcription failed: {e}"))?;
-    let mut text = String::new();
-    response
-        .into_body()
-        .into_reader()
-        .read_to_string(&mut text)
-        .map_err(|e| format!("could not read live transcription result: {e}"))?;
-    Ok(parse_remote_transcript(&text)?.1)
-}
-
 fn parse_remote_transcript(text: &str) -> Result<(String, Vec<(i64, i64, String)>), String> {
     let result: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| format!("invalid remote transcription result: {e}"))?;
