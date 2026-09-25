@@ -605,7 +605,13 @@ impl Recorder {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(250)
             .build();
-        layout.add_named(&content, Some("record"));
+        let record_scroll = gtk::ScrolledWindow::builder()
+            .child(&content)
+            .vexpand(true)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .build();
+        layout.add_named(&record_scroll, Some("record"));
         layout.add_named(animation.widget(), Some("transcribing"));
         layout.add_named(&done, Some("done"));
         layout.add_named(&compact, Some("compact"));
