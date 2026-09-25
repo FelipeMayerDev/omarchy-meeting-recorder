@@ -64,7 +64,8 @@ enum Tracks {
 struct LivePanel {
     window: adw::Window,
     buffer: gtk::TextBuffer,
-    shown_until: Cell<i64>,
+    shown_turn_until: Cell<i64>,
+    shown_caption_until: Cell<i64>,
 }
 
 /// The imported source audio, kept for transcribing again.
@@ -1938,7 +1939,8 @@ impl Recorder {
         *self.live_abort.borrow_mut() = Some(abort.clone());
         let (updates, received) = async_channel::unbounded();
         let chunks = self.system.subscribe();
-        std::thread::spawn(move || crate::live::run(chunks, provider, updates, abort));
+        let language = self.selected_language();
+        std::thread::spawn(move || crate::live::run(chunks, provider, language, updates, abort));
         let weak = Rc::downgrade(self);
         glib::spawn_future_local(async move {
             while let Ok(update) = received.recv().await {
@@ -1946,7 +1948,7 @@ impl Recorder {
                     break;
                 };
                 if recorder.state.get() == State::Recording {
-                    recorder.show_live_turns(update.turns);
+                    recorder.show_live_update(update);
                 }
             }
         });
@@ -1985,7 +1987,7 @@ impl Recorder {
             .build();
         content.append(
             &gtk::Label::builder()
-                .label("Live speaker timeline · provisional")
+                .label("Live speakers & captions · provisional")
                 .xalign(0.0)
                 .css_classes(["title-3"])
                 .build(),
@@ -2000,7 +2002,8 @@ impl Recorder {
         *self.live_panel.borrow_mut() = Some(LivePanel {
             window,
             buffer,
-            shown_until: Cell::new(0),
+            shown_turn_until: Cell::new(0),
+            shown_caption_until: Cell::new(0),
         });
     }
 
@@ -2010,13 +2013,13 @@ impl Recorder {
         }
     }
 
-    fn show_live_turns(&self, turns: Vec<crate::diarize::Turn>) {
+    fn show_live_update(&self, update: crate::live::Update) {
         let panel = self.live_panel.borrow();
         let Some(panel) = panel.as_ref() else {
             return;
         };
-        for turn in turns {
-            let start = turn.start_ms.max(panel.shown_until.get());
+        for turn in update.turns {
+            let start = turn.start_ms.max(panel.shown_turn_until.get());
             if turn.end_ms <= start {
                 continue;
             }
@@ -2030,7 +2033,25 @@ impl Recorder {
                     turn.speaker + 1
                 ),
             );
-            panel.shown_until.set(turn.end_ms);
+            panel.shown_turn_until.set(turn.end_ms);
+        }
+        for caption in update.captions {
+            let start = caption.start_ms.max(panel.shown_caption_until.get());
+            if caption.end_ms <= start {
+                continue;
+            }
+            let mut end = panel.buffer.end_iter();
+            panel.buffer.insert(
+                &mut end,
+                &format!(
+                    "{}–{}  Remote {}: {}\n",
+                    format_elapsed(start / 1000),
+                    format_elapsed(caption.end_ms / 1000),
+                    caption.speaker + 1,
+                    caption.text
+                ),
+            );
+            panel.shown_caption_until.set(caption.end_ms);
         }
     }
 
