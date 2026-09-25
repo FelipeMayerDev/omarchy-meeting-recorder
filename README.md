@@ -1,8 +1,8 @@
 # Meeting Recorder
 
-A meeting recorder for [Omarchy](https://omarchy.org). It records your microphone and the computer audio as two tracks, and when you stop you get a transcript with speakers, chapters and a player. You can also drop in a recording you already have. Everything is transcribed on your own machine.
+A meeting recorder for [Omarchy](https://omarchy.org). It records your microphone and the computer audio as two tracks, and when you stop you get a transcript with speakers, chapters and a player. You can also drop in a recording you already have. Transcription and diarization run on your own machine by default.
 
-No bot joins your call, and no audio leaves your computer. It works with any meeting app, because it simply listens to what your computer plays and what you say.
+No bot joins your call. In local mode no audio leaves your computer; remote diarization is opt-in. It works with any meeting app, because it simply listens to what your computer plays and what you say.
 
 ![The done screen in Tokyo Night: chapters on the left, the transcript on the right, a waveform player above it](screenshots/hero.webp)
 
@@ -60,7 +60,7 @@ The bar widget shows the same while you record: a pulsing dot, a small waveform 
 
 ### Transcribes on your own machine
 
-When you stop, the window switches straight to the transcribing animation: it saves the audio, then [whisper-rs](https://github.com/tazz4843/whisper-rs) transcribes the meeting, and the lines type themselves out with the speakers' names as they are recognised. It ends on 100% and DONE, and stays at least ten seconds, also for a short recording. Nothing is sent anywhere.
+When you stop, the window switches straight to the transcribing animation: it saves the audio, then [whisper-rs](https://github.com/tazz4843/whisper-rs) transcribes the meeting, and the lines type themselves out with the speakers' names as they are recognised. It ends on 100% and DONE, and stays at least ten seconds, also for a short recording. With local diarization, nothing is sent anywhere.
 
 <p align="center"><img src="screenshots/transcribing.webp" alt="The transcribing animation at 77 percent with lines from Maya and Tom" width="440"></p>
 
@@ -71,6 +71,10 @@ Drop an audio file on the window, or click **Import an audio file**: a phone mem
 <p align="center"><img src="screenshots/drop-overlay.webp" alt="Dragging an mp3 from Nautilus onto the window: a dashed border and Drop to import" width="360">&nbsp;&nbsp;<img src="screenshots/import-dialog.webp" alt="The Import audio dialog with Language and Speakers set to Automatic" width="360"></p>
 
 ![An imported design review: three speakers, each in their own colour](screenshots/import-speakers.webp)
+
+### Optional remote diarization
+
+Speaker diarization is **Local** by default. Choose **Remote** on the start screen to send the audio only to a compatible server: enter its IP address and API key. The key is held only for that app session. Leave the number of speakers on **Automatic** to let the server detect it, or choose a fixed number when you know it.
 
 ### Gives you a transcript you can listen to
 
@@ -144,7 +148,7 @@ Both tracks are always recorded separately, and each is levelled to the same spe
 - **Recording.** The mic (`@DEFAULT_SOURCE@`) and the monitor of the default output (`@DEFAULT_MONITOR@`) are captured with `parec`. Because it follows the default output, switching to a headset during a call keeps working. `ffmpeg` encodes the audio to Opus when you stop.
 - **Transcription.** After the call both tracks are mixed and transcribed in one pass with whisper-rs, using the `large-v3-turbo` model unless you pick another, so there is a single timeline. Long silences are skipped, which keeps whisper from inventing text in them, and word times come from whisper's attention alignment (DTW).
 - **Who said what.** The speaker of each line is read off the two tracks, like whisper.cpp's `--diarize`: where the mic is louder it is you, where the computer audio is louder it is the other side. Echo of the other side in your mic, when you use speakers instead of a headset, is always quieter than the original, so it does not become a line of its own. When more than one person talks on the computer audio, the voices there are told apart as well (see below), and the other side becomes "Remote 1", "Remote 2" and so on, each with its own name field.
-- **Imported files.** A single audio file has no second track to tell the speakers apart, so the voices themselves are told apart with NVIDIA's [Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization), run locally through ONNX Runtime. It follows up to eight speakers, also when they talk at the same time, and numbers them "Speaker 1", "Speaker 2" and so on in the order they first speak. The number of speakers is found automatically (voices heard for only a few seconds are folded into the nearest real speaker) or can be fixed. A sentence always goes to one speaker as a whole. Similar voices and fast back-and-forth can still land on the wrong speaker, which the swap-speaker button fixes per line.
+- **Imported files.** A single audio file has no second track to tell the speakers apart, so the voices themselves are told apart with NVIDIA's [Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization), run locally through ONNX Runtime or by the optional remote server. It numbers them "Speaker 1", "Speaker 2" and so on in the order they first speak. The number of speakers is found automatically or can be fixed. A sentence always goes to one speaker as a whole. Similar voices and fast back-and-forth can still land on the wrong speaker, which the swap-speaker button fixes per line.
 - **Chapters.** The recorder runs `omarchy-default-agent`'s agent headless and with every tool switched off, in an empty working directory, bounded in time and size. Agents that cannot run without tools are not used.
 - **Playback.** `ffmpeg` decodes into `pacat`, so playing a meeting back needs nothing beyond what recording already uses.
 - **Crash recovery.** While recording, both tracks are written to a cache directory as they come in. A recording that was not stopped properly is still there on the next start.
@@ -166,7 +170,7 @@ The app looks for `ggml-<model>.bin`, for instance `ggml-large-v3-turbo.bin`, in
 
 ## Privacy
 
-The audio, the transcript and everything else stay on your computer. The only thing that leaves it is the transcript text for the chapters, and only when you have set a default agent: it goes to that agent's service, the one you already chose and pay for. No agent, no chapters, nothing sent.
+With local diarization, the audio, transcript and everything else stay on your computer. Remote diarization sends audio to the IP address and API key you enter. The only other thing that leaves it is the transcript text for the chapters, and only when you have set a default agent: it goes to that agent's service, the one you already chose and pay for. No agent, no chapters, nothing sent.
 
 ## Requirements
 

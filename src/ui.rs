@@ -133,6 +133,10 @@ struct Recorder {
     title_row: adw::EntryRow,
     format_row: adw::ComboRow,
     language_row: adw::ComboRow,
+    diarization_row: adw::ComboRow,
+    remote_ip_row: adw::EntryRow,
+    remote_key_row: adw::ActionRow,
+    remote_key: gtk::PasswordEntry,
     animation: TranscribeAnimation,
     meters: [gtk::DrawingArea; 2],
     compact_meters: [gtk::DrawingArea; 2],
@@ -272,9 +276,33 @@ impl Recorder {
                 .position(|(code, _)| *code == saved)
                 .unwrap_or(0) as u32,
         );
+        let diarization_row = adw::ComboRow::builder()
+            .title("Speaker diarization")
+            .subtitle("Separate speakers locally or on a remote server")
+            .model(&gtk::StringList::new(&["Off", "Local", "Remote"]))
+            .build();
+        diarization_row.set_selected(match settings::load_diarization() {
+            "off" => 0,
+            "remote" => 2,
+            _ => 1,
+        });
+        let remote_ip_row = adw::EntryRow::builder().title("Remote server IP").build();
+        remote_ip_row.set_text(&settings::load_remote_ip());
+        let remote_key_row = adw::ActionRow::builder()
+            .title("Remote API key")
+            .subtitle("Only kept while Meeting Recorder is open")
+            .build();
+        let remote_key = gtk::PasswordEntry::builder()
+            .hexpand(true)
+            .show_peek_icon(true)
+            .build();
+        remote_key_row.add_suffix(&remote_key);
         group.add(&title_row);
         group.add(&format_row);
         group.add(&language_row);
+        group.add(&diarization_row);
+        group.add(&remote_ip_row);
+        group.add(&remote_key_row);
         content.append(&group);
 
         let frozen: [Frozen; 2] = Default::default();
@@ -579,6 +607,10 @@ impl Recorder {
             title_row,
             format_row,
             language_row,
+            diarization_row,
+            remote_ip_row,
+            remote_key_row,
+            remote_key,
             animation,
             meters,
             compact_meters,
@@ -637,6 +669,7 @@ impl Recorder {
             manifest: RefCell::default(),
         });
         recorder.connect_signals(&open_button, &new_button, &quit_action);
+        recorder.update_diarization_rows();
         let weak = Rc::downgrade(&recorder);
         glib::spawn_future_local(async move {
             while let Ok(command) = commands_rx.recv().await {
@@ -805,6 +838,24 @@ impl Recorder {
                 && r.language_row.selected() != row.selected()
             {
                 r.language_row.set_selected(row.selected());
+            }
+        });
+
+        let weak = Rc::downgrade(self);
+        self.diarization_row.connect_selected_notify(move |_| {
+            if let Some(r) = weak.upgrade() {
+                if !r.loading.get() {
+                    settings::save_diarization(r.selected_diarization_key());
+                }
+                r.update_diarization_rows();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.remote_ip_row.connect_changed(move |row| {
+            if let Some(r) = weak.upgrade()
+                && !r.loading.get()
+            {
+                settings::save_remote_ip(row.text().trim());
             }
         });
 
@@ -1025,6 +1076,39 @@ impl Recorder {
             .unwrap_or("auto")
     }
 
+    fn selected_diarization_key(&self) -> &'static str {
+        match self.diarization_row.selected() {
+            0 => "off",
+            2 => "remote",
+            _ => "local",
+        }
+    }
+
+    fn diarization(&self) -> Result<crate::diarize::Provider, String> {
+        match self.selected_diarization_key() {
+            "off" => Ok(crate::diarize::Provider::Off),
+            "local" => Ok(crate::diarize::Provider::Local),
+            "remote" => {
+                let ip = self.remote_ip_row.text().trim().to_owned();
+                if ip.parse::<std::net::IpAddr>().is_err() {
+                    return Err("Enter the remote diarization server's IP address".into());
+                }
+                let api_key = self.remote_key.text().trim().to_owned();
+                if api_key.is_empty() {
+                    return Err("Enter the remote diarization API key".into());
+                }
+                Ok(crate::diarize::Provider::Remote { ip, api_key })
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn update_diarization_rows(&self) {
+        let remote = self.selected_diarization_key() == "remote";
+        self.remote_ip_row.set_visible(remote);
+        self.remote_key_row.set_visible(remote);
+    }
+
     fn title(&self) -> String {
         let typed = self.title_row.text().trim().to_owned();
         if typed.is_empty() {
@@ -1066,6 +1150,10 @@ impl Recorder {
         self.compact_action.set_enabled(recording);
         self.language_row
             .set_sensitive(!matches!(state, State::Stopping | State::Transcribing));
+        let can_change_diarization = matches!(state, State::Idle | State::Done);
+        self.diarization_row.set_sensitive(can_change_diarization);
+        self.remote_ip_row.set_sensitive(can_change_diarization);
+        self.remote_key.set_sensitive(can_change_diarization);
         self.button.set_sensitive(matches!(
             state,
             State::Idle | State::Recording | State::Done
@@ -1684,6 +1772,7 @@ impl Recorder {
         let Some(out) = self.result_dir.borrow().clone() else {
             return Err("no meeting folder".into());
         };
+        let diarization = self.diarization()?;
         self.set_compact(false);
         if self.animation_since.get().is_none() {
             self.animation_since.set(Some(std::time::Instant::now()));
@@ -1701,7 +1790,14 @@ impl Recorder {
         std::thread::spawn(move || {
             let result = match tracks {
                 Tracks::Single(path, speakers) => transcribe::load_track(&path).and_then(|track| {
-                    transcribe::transcribe_single(&track, language, speakers, &events_tx, &abort)
+                    transcribe::transcribe_single(
+                        &track,
+                        language,
+                        speakers,
+                        &diarization,
+                        &events_tx,
+                        &abort,
+                    )
                 }),
                 Tracks::Raw(dir) | Tracks::Kept(dir) => {
                     let (mic_path, computer_path) = if dir.join("mic.raw").exists() {
@@ -1711,7 +1807,14 @@ impl Recorder {
                     };
                     transcribe::load_track(&mic_path).and_then(|mic| {
                         let computer = transcribe::load_track(&computer_path)?;
-                        transcribe::transcribe(&mic, &computer, language, &events_tx, &abort)
+                        transcribe::transcribe(
+                            &mic,
+                            &computer,
+                            language,
+                            &diarization,
+                            &events_tx,
+                            &abort,
+                        )
                     })
                 }
             };

@@ -62,6 +62,30 @@ pub fn save_language(code: &str) {
     save("language", code);
 }
 
+/// The diarization engine. Keep local as the default so upgrading does not
+/// change the app's current behaviour.
+pub fn load_diarization() -> &'static str {
+    match load()["diarization"].as_str() {
+        Some("off") => "off",
+        Some("remote") => "remote",
+        _ => "local",
+    }
+}
+
+pub fn save_diarization(mode: &str) {
+    save("diarization", mode);
+}
+
+/// The remote server address is not secret; its API key deliberately is not
+/// written to the settings file.
+pub fn load_remote_ip() -> String {
+    load()["remote_ip"].as_str().unwrap_or_default().to_owned()
+}
+
+pub fn save_remote_ip(ip: &str) {
+    save("remote_ip", ip);
+}
+
 /// What the mic side is called in new transcripts, "You" until you change it.
 pub fn load_your_name() -> String {
     load()["your_name"]

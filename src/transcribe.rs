@@ -530,6 +530,7 @@ pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
     language: &str,
+    diarization: &crate::diarize::Provider,
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
@@ -558,7 +559,7 @@ pub fn transcribe(
         emit(events, Event::Progress(1.0));
         return Ok(empty(language));
     }
-    let remote = remote_voices(&computer, events, abort)?;
+    let remote = remote_voices(&computer, diarization, events, abort)?;
     let context = load_whisper(events, abort)?;
 
     let length = |regions: &[Region]| regions.iter().map(|r| r.end - r.start).sum::<usize>();
@@ -686,16 +687,18 @@ fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
 /// transcript; the other side then stays one speaker.
 fn remote_voices(
     computer: &[f32],
+    diarization: &crate::diarize::Provider,
     events: &Events,
     abort: &Abort,
 ) -> Result<Vec<crate::diarize::Turn>, String> {
     if is_silent(computer) {
         return Ok(Vec::new());
     }
-    match crate::diarize::turns(computer, None, events, abort) {
+    match crate::diarize::turns(computer, None, diarization, events, abort) {
         Ok(turns) if turns.iter().any(|t| t.speaker > 0) => Ok(turns),
         Ok(_) => Ok(Vec::new()),
         Err(e) if e == CANCELLED => Err(e),
+        Err(e) if matches!(diarization, crate::diarize::Provider::Remote { .. }) => Err(e),
         Err(e) => {
             eprintln!(
                 "{}: finding the voices on the computer audio: {e}",
@@ -714,6 +717,7 @@ pub fn transcribe_single(
     track: &[f32],
     language: &str,
     speakers: Option<usize>,
+    diarization: &crate::diarize::Provider,
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
@@ -740,7 +744,7 @@ pub fn transcribe_single(
     // Speakers first, so the live lines can already say who is talking.
     let turns = match speakers {
         Some(1) => crate::diarize::single(track),
-        _ => crate::diarize::turns(track, speakers, events, abort)?,
+        _ => crate::diarize::turns(track, speakers, diarization, events, abort)?,
     };
     let speakers = Speakers::Turns(turns);
     whisper_pass(
@@ -1266,7 +1270,14 @@ pub fn cli(args: &[String]) -> glib::ExitCode {
     run_cli(|events, abort| {
         let mic = load_track(mic_path)?;
         let computer = load_track(computer_path)?;
-        transcribe(&mic, &computer, &language, events, abort)
+        transcribe(
+            &mic,
+            &computer,
+            &language,
+            &crate::diarize::Provider::Local,
+            events,
+            abort,
+        )
     })
 }
 
@@ -1298,7 +1309,14 @@ pub fn cli_file(args: &[String]) -> glib::ExitCode {
     };
     run_cli(|events, abort| {
         let track = load_track(path)?;
-        transcribe_single(&track, &language, speakers, events, abort)
+        transcribe_single(
+            &track,
+            &language,
+            speakers,
+            &crate::diarize::Provider::Local,
+            events,
+            abort,
+        )
     })
 }
 
