@@ -1103,7 +1103,7 @@ impl Recorder {
                     .run_transcription(tracks, this.selected_language())
                     .await;
                 this.hold_animation(&result).await;
-                this.finished(true, result);
+                this.finished(true, result, false);
             });
         });
 
@@ -1597,7 +1597,7 @@ impl Recorder {
                 Err(message) => Err(message),
             };
             this.hold_animation(&result).await;
-            this.finished(result.is_ok(), result);
+            this.finished(result.is_ok(), result, false);
         });
     }
 
@@ -1922,7 +1922,7 @@ impl Recorder {
             } else {
                 this.animation.set_running(false);
             }
-            this.finished(saved.0, result);
+            this.finished(saved.0, result, !process_after);
         });
     }
 
@@ -2214,23 +2214,18 @@ impl Recorder {
         self.animation.set_running(false);
     }
 
-    fn finished(self: &Rc<Self>, audio_ok: bool, transcript: Result<(), String>) {
+    fn finished(self: &Rc<Self>, audio_ok: bool, transcript: Result<(), String>, deferred: bool) {
         self.done_title_row.set_text(&self.title_row.text());
         self.set_state(State::Done);
         // Follow a name that was edited while the transcription ran.
         self.apply_title();
 
-        let transcript_exists = self
-            .result_dir
-            .borrow()
-            .as_ref()
-            .is_some_and(|dir| dir.join("transcript.md").is_file());
         let problem = match (&transcript, audio_ok) {
             (Err(message), _) if message == CANCELLED => {
                 Some("Transcription cancelled.".to_owned())
             }
             (Err(message), _) => Some(format!("Transcription failed: {message}.")),
-            (Ok(()), true) if !transcript_exists => Some(
+            (Ok(()), true) if deferred => Some(
                 "Not transcribed yet. Choose a language and press Transcribe again.".to_owned(),
             ),
             (Ok(()), false) => Some("Could not save the audio.".to_owned()),
