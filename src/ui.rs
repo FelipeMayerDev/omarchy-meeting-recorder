@@ -61,6 +61,12 @@ enum Tracks {
     Single(PathBuf, Option<usize>),
 }
 
+struct LivePanel {
+    window: adw::Window,
+    buffer: gtk::TextBuffer,
+    shown_until: Cell<i64>,
+}
+
 /// The imported source audio, kept for transcribing again.
 fn source_track(meeting_dir: &std::path::Path) -> PathBuf {
     meeting_dir.join(export::TRACKS_DIR).join("source.ogg")
@@ -136,6 +142,7 @@ struct Recorder {
     transcription_row: adw::ComboRow,
     diarization_row: adw::ComboRow,
     remote_speakers_row: adw::ComboRow,
+    live_diarization_row: adw::SwitchRow,
     process_after_row: adw::SwitchRow,
     remote_ip_row: adw::EntryRow,
     remote_key_row: adw::ActionRow,
@@ -203,6 +210,8 @@ struct Recorder {
     staging: RefCell<Option<PathBuf>>,
     result_dir: RefCell<Option<PathBuf>>,
     abort: RefCell<Option<Abort>>,
+    live_abort: RefCell<Option<Abort>>,
+    live_panel: RefCell<Option<LivePanel>>,
     quit_when_done: Cell<bool>,
     /// Set while a meeting's own settings are shown, so they are not saved as defaults.
     loading: Cell<bool>,
@@ -304,6 +313,11 @@ impl Recorder {
             .subtitle("People in computer audio; automatic is usually best")
             .model(&gtk::StringList::new(&SPEAKER_CHOICES))
             .build();
+        let live_diarization_row = adw::SwitchRow::builder()
+            .title("Live diarization")
+            .subtitle("Open a provisional speaker timeline while recording")
+            .active(settings::load_live_diarization())
+            .build();
         let process_after_row = adw::SwitchRow::builder()
             .title("Process after recording")
             .subtitle("Turn off to save audio and transcribe it later")
@@ -327,6 +341,7 @@ impl Recorder {
         group.add(&transcription_row);
         group.add(&diarization_row);
         group.add(&remote_speakers_row);
+        group.add(&live_diarization_row);
         group.add(&process_after_row);
         group.add(&remote_ip_row);
         group.add(&remote_key_row);
@@ -605,7 +620,12 @@ impl Recorder {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(250)
             .build();
-        layout.add_named(&content, Some("record"));
+        let record_scroll = gtk::ScrolledWindow::builder()
+            .child(&content)
+            .vexpand(true)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        layout.add_named(&record_scroll, Some("record"));
         layout.add_named(animation.widget(), Some("transcribing"));
         layout.add_named(&done, Some("done"));
         layout.add_named(&compact, Some("compact"));
@@ -637,6 +657,7 @@ impl Recorder {
             transcription_row,
             diarization_row,
             remote_speakers_row,
+            live_diarization_row,
             process_after_row,
             remote_ip_row,
             remote_key_row,
@@ -694,6 +715,8 @@ impl Recorder {
             staging: RefCell::default(),
             result_dir: RefCell::default(),
             abort: RefCell::default(),
+            live_abort: RefCell::default(),
+            live_panel: RefCell::default(),
             quit_when_done: Cell::new(false),
             loading: Cell::new(false),
             manifest: RefCell::default(),
@@ -895,6 +918,14 @@ impl Recorder {
                 && !r.loading.get()
             {
                 settings::save_process_after_recording(row.is_active());
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.live_diarization_row.connect_active_notify(move |row| {
+            if let Some(r) = weak.upgrade()
+                && !r.loading.get()
+            {
+                settings::save_live_diarization(row.is_active());
             }
         });
         let weak = Rc::downgrade(self);
@@ -1209,6 +1240,8 @@ impl Recorder {
         self.remote_key_row.set_visible(remote);
         self.remote_speakers_row
             .set_visible(self.selected_diarization_key() != "off");
+        self.live_diarization_row
+            .set_visible(self.selected_diarization_key() == "remote");
     }
 
     fn title(&self) -> String {
@@ -1256,6 +1289,8 @@ impl Recorder {
         self.transcription_row.set_sensitive(can_change_diarization);
         self.diarization_row.set_sensitive(can_change_diarization);
         self.remote_speakers_row
+            .set_sensitive(can_change_diarization);
+        self.live_diarization_row
             .set_sensitive(can_change_diarization);
         self.process_after_row
             .set_sensitive(matches!(state, State::Idle | State::Done));
@@ -1796,6 +1831,12 @@ impl Recorder {
         self.timer.set_label("00:00");
         self.compact_timer.set_label("00:00");
         self.set_state(State::Recording);
+        if self.live_diarization_row.is_active()
+            && self.selected_diarization_key() == "remote"
+            && let Err(message) = self.start_live_diarization()
+        {
+            self.toast(&format!("Live diarization is unavailable: {message}"));
+        }
     }
 
     fn stop(self: &Rc<Self>) {
@@ -1808,6 +1849,10 @@ impl Recorder {
             self.paused.set(false);
         }
         self.freeze_meters(false);
+        if let Some(abort) = self.live_abort.borrow_mut().take() {
+            abort.store(true, Ordering::Relaxed);
+        }
+        self.close_live_panel();
         self.animation_since.set(Some(std::time::Instant::now()));
         self.mic.stop_recording();
         self.system.stop_recording();
@@ -1879,6 +1924,115 @@ impl Recorder {
             }
             this.finished(saved.0, result);
         });
+    }
+
+    fn start_live_diarization(self: &Rc<Self>) -> Result<(), String> {
+        let provider = match self.diarization()? {
+            crate::diarize::Provider::Remote { ip, api_key } => {
+                crate::diarize::Provider::Remote { ip, api_key }
+            }
+            _ => return Err("select Remote speaker diarization first".into()),
+        };
+        self.open_live_panel();
+        let abort = Abort::default();
+        *self.live_abort.borrow_mut() = Some(abort.clone());
+        let (updates, received) = async_channel::unbounded();
+        let chunks = self.system.subscribe();
+        let speakers = self.selected_remote_speaker_count();
+        std::thread::spawn(move || crate::live::run(chunks, provider, speakers, updates, abort));
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            while let Ok(update) = received.recv().await {
+                let Some(recorder) = weak.upgrade() else {
+                    break;
+                };
+                if recorder.state.get() == State::Recording {
+                    recorder.show_live_turns(update.turns);
+                }
+            }
+        });
+        Ok(())
+    }
+
+    fn open_live_panel(&self) {
+        if let Some(panel) = self.live_panel.borrow().as_ref() {
+            panel.window.present();
+            return;
+        }
+        let text = gtk::TextView::builder()
+            .editable(false)
+            .cursor_visible(false)
+            .monospace(true)
+            .wrap_mode(gtk::WrapMode::WordChar)
+            .top_margin(12)
+            .bottom_margin(12)
+            .left_margin(12)
+            .right_margin(12)
+            .build();
+        let buffer = text.buffer();
+        buffer.set_text("Listening for speakers…\n");
+        let scroll = gtk::ScrolledWindow::builder()
+            .child(&text)
+            .vexpand(true)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        content.append(
+            &gtk::Label::builder()
+                .label("Live speaker timeline · provisional")
+                .xalign(0.0)
+                .css_classes(["title-3"])
+                .build(),
+        );
+        content.append(&scroll);
+        let window = adw::Window::new();
+        window.set_title(Some("Live diarization"));
+        window.set_default_size(360, 420);
+        window.set_transient_for(Some(&self.window));
+        window.set_content(Some(&content));
+        window.present();
+        *self.live_panel.borrow_mut() = Some(LivePanel {
+            window,
+            buffer,
+            shown_until: Cell::new(0),
+        });
+    }
+
+    fn close_live_panel(&self) {
+        if let Some(panel) = self.live_panel.borrow_mut().take() {
+            panel.window.close();
+        }
+    }
+
+    fn show_live_turns(&self, turns: Vec<crate::diarize::Turn>) {
+        let panel = self.live_panel.borrow();
+        let Some(panel) = panel.as_ref() else {
+            return;
+        };
+        for turn in turns {
+            let start = turn.start_ms.max(panel.shown_until.get());
+            if turn.end_ms <= start {
+                continue;
+            }
+            let mut end = panel.buffer.end_iter();
+            panel.buffer.insert(
+                &mut end,
+                &format!(
+                    "{}–{}  Remote {}\n",
+                    format_elapsed(start / 1000),
+                    format_elapsed(turn.end_ms / 1000),
+                    turn.speaker + 1
+                ),
+            );
+            panel.shown_until.set(turn.end_ms);
+        }
     }
 
     /// Transcribes into `result_dir/transcript.md`, driving the animation.

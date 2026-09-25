@@ -104,6 +104,20 @@ pub fn save_process_after_recording(enabled: bool) {
     let _ = std::fs::write(path, settings.to_string());
 }
 
+pub fn load_live_diarization() -> bool {
+    load()["live_diarization"].as_bool().unwrap_or(false)
+}
+
+pub fn save_live_diarization(enabled: bool) {
+    let mut settings = load();
+    settings["live_diarization"] = serde_json::Value::Bool(enabled);
+    let path = path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, settings.to_string());
+}
+
 /// The remote server address is not secret.
 pub fn load_remote_ip() -> String {
     load()["remote_ip"].as_str().unwrap_or_default().to_owned()

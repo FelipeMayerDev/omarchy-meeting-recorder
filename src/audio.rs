@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -21,6 +22,7 @@ const FLOOR_DB: f64 = -60.0;
 struct Inner {
     levels: VecDeque<f32>,
     file: Option<BufWriter<File>>,
+    subscribers: Vec<SyncSender<Vec<u8>>>,
     /// While paused the meters keep running but nothing is written.
     paused: bool,
 }
@@ -36,6 +38,7 @@ impl Source {
         let inner = Arc::new(Mutex::new(Inner {
             levels: VecDeque::from(vec![0.0; HISTORY]),
             file: None,
+            subscribers: Vec::new(),
             paused: false,
         }));
         let shared = inner.clone();
@@ -66,6 +69,14 @@ impl Source {
         if let Some(mut file) = self.inner.lock().unwrap().file.take() {
             let _ = file.flush();
         }
+    }
+
+    /// Raw 20 ms capture chunks. A slow live preview drops chunks rather than
+    /// delaying recording.
+    pub fn subscribe(&self) -> Receiver<Vec<u8>> {
+        let (send, receive) = sync_channel(250);
+        self.inner.lock().unwrap().subscribers.push(send);
+        receive
     }
 
     pub fn levels(&self) -> Vec<f32> {
@@ -131,6 +142,12 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
                 let _ = file.get_ref().sync_data();
             }
         }
+        inner
+            .subscribers
+            .retain(|send| match send.try_send(buf.clone()) {
+                Ok(()) | Err(TrySendError::Full(_)) => true,
+                Err(TrySendError::Disconnected(_)) => false,
+            });
     }
     let _ = child.kill();
     let _ = child.wait();
